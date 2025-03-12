@@ -14,12 +14,26 @@ sudo timedatectl set-ntp yes
 # Create 'rd' user and add to rivendell group
 echo "Creating 'rd' user..."
 sudo adduser --gecos "" rd
-sudo usermod -aG rivendell rd
 
 # Install MATE Desktop
-echo "Installing MATE Desktop..."
-sudo apt install tasksel -y
-sudo tasksel install ubuntu-mate
+# echo "Installing MATE Desktop..."
+# sudo apt install tasksel -y
+# sudo tasksel install ubuntu-mate
+
+# Check if the script is being run as root
+if [ "$(id -u)" -ne 0 ]; then
+    echo "You are not running as root. Switching to root using 'su'."
+    # Prompt the user to enter their root password for elevation
+    su -c "tasksel install mate-desktop"
+    exit 0
+fi
+
+# If already root, run tasksel to install MATE
+echo "Running tasksel to install MATE..."
+tasksel install mate-desktop
+
+# Confirm installation
+echo "MATE desktop installation is complete."
 
 # Install xRDP
 echo "Installing xRDP..."
@@ -53,6 +67,7 @@ sudo tee /etc/icecast2/icecast.xml <<EOL
     <admin-user>admin</admin-user>
     <admin-password>Hackme$$$</admin-password>
 </authentication>
+
 <listen-socket>
     <port>8000</port>
     <shoutcast-mount>/stream</shoutcast-mount>
@@ -77,18 +92,74 @@ sudo -u rd mkdir -p /home/rd/imports /home/rd/logs
 
 # Download APPS folder
 echo "Downloading APPS folder..."
-sudo -u rd git clone https://github.com/YOUR_GITHUB_USERNAME/APPS.git /home/rd/imports/APPS
-chmod -R +x /home/rd/imports/APPS
+sudo -u rd git clone https://github.com/anjeleno/Rivendell-Cloud.git /home/rd/imports/APPS
 
-# Move desktop shortcuts
-echo "Setting up desktop shortcuts..."
-sudo -u rd mkdir -p /home/rd/Desktop
-sudo -u rd chmod +x /home/rd/imports/APPS/Desktop\ Shortcuts/*
-sudo -u rd mv /home/rd/imports/APPS/Desktop\ Shortcuts/* /home/rd/Desktop/
+# Move APPS and Shortcuts and make executable
+# Define the paths
+CLONED_DIR="/home/rd/Rivendell-Cloud/"  # Path where APPS is initially located
+APPS_DIR="$CLONED_DIR/APPS"  # Source APPS folder
+DEST_PARENT_DIR="/home/rd/imports"  # Destination parent directory
+DEST_DIR="$DEST_PARENT_DIR/APPS"  # Where APPS should end up
+DESKTOP_SHORTCUTS_DIR="$DEST_DIR/Desktop Shortcuts"  # Corrected path after moving
+USER_DESKTOP="/home/rd/Desktop"  # Assuming user 'rd'
 
-# Make .sql backup script executable
-echo "Setting up SQL backup scripts..."
-sudo -u rd chmod +x /home/rd/imports/APPS/.sql/daily_db_backup.sh
+# Ensure the destination parent directory exists
+mkdir -p "$DEST_PARENT_DIR"
+
+# Check if the APPS directory exists in the source location
+if [ -d "$APPS_DIR" ]; then
+    echo "Found APPS directory: $APPS_DIR"
+    
+    # Remove existing APPS folder at destination to prevent duplication
+    if [ -d "$DEST_DIR" ]; then
+        echo "Removing existing APPS directory at $DEST_DIR to prevent nesting..."
+        rm -rf "$DEST_DIR"
+    fi
+
+    # Move APPS to the correct location
+    echo "Moving APPS folder to $DEST_PARENT_DIR..."
+    mv "$APPS_DIR" "$DEST_PARENT_DIR"
+    
+    # Check if the move was successful
+    if [ $? -eq 0 ]; then
+        echo "APPS folder successfully moved to $DEST_DIR."
+    else
+        echo "Failed to move APPS folder."
+        exit 1
+    fi
+
+    # Fix ownership to ensure files belong to 'rd' instead of root
+    echo "Changing ownership of $DEST_DIR to rd..."
+    chown -R rd:rd "$DEST_DIR"
+
+    # Change file permissions to make everything executable inside APPS
+    echo "Changing file permissions in $DEST_DIR..."
+    chmod -R +x "$DEST_DIR"
+
+    # Check if the 'Desktop Shortcuts' directory exists in the new location
+    if [ -d "$DESKTOP_SHORTCUTS_DIR" ]; then
+        echo "Found Desktop Shortcuts directory in $DEST_DIR."
+
+        # Move desktop shortcuts to the user's Desktop
+        echo "Moving desktop shortcuts to $USER_DESKTOP..."
+        mv "$DESKTOP_SHORTCUTS_DIR"/* "$USER_DESKTOP"
+
+        # Check if the move was successful
+        if [ $? -eq 0 ]; then
+            echo "Desktop shortcuts successfully moved to the Desktop."
+        else
+            echo "Failed to move desktop shortcuts."
+            exit 1
+        fi
+    else
+        echo "Desktop Shortcuts directory not found inside $DEST_DIR."
+        exit 1
+    fi
+
+else
+    echo "APPS directory not found in $CLONED_DIR."
+    exit 1
+fi
 
 # Extract MySQL password from rd.conf
 echo "Extracting MySQL password from /etc/rd.conf..."
