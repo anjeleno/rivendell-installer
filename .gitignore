@@ -1,0 +1,6 @@
+# Ignore log files
+*.log
+
+# Ignore future SQL dump files but keep the script
+/home/rd/imports/APPS/.sql/*.sql
+!home/rd/imports/APPS/.sql/daily_db_backup.sh  # Keep the backup script
