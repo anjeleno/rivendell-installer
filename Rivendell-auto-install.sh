@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e  # Exit on error
 
+# Persistent step tracking directory
+STEP_DIR="/home/rd/rivendell_install_steps"
+mkdir -p "$STEP_DIR"
+
 # Function to prompt user for confirmation
 confirm() {
     read -p "$1 (y/n): " REPLY
@@ -10,11 +14,11 @@ confirm() {
 # Function to check if a step has already been completed
 step_completed() {
     local step_name="$1"
-    if [ -f "/tmp/rivendell_install_$step_name" ]; then
+    if [ -f "$STEP_DIR/$step_name" ]; then
         echo "Step '$step_name' already completed. Skipping..."
         return 0
     else
-        touch "/tmp/rivendell_install_$step_name"
+        touch "$STEP_DIR/$step_name"
         return 1
     fi
 }
@@ -36,8 +40,12 @@ fi
 # Create 'rd' user and add to sudo group
 if ! step_completed "create_rd_user"; then
     echo "Creating 'rd' user..."
-    sudo adduser --gecos "" rd
-    sudo usermod -aG sudo rd  # Add rd to sudo group
+    if ! id -u rd >/dev/null 2>&1; then
+        sudo adduser --gecos "" rd
+        sudo usermod -aG sudo rd  # Add rd to sudo group
+    else
+        echo "User 'rd' already exists. Skipping..."
+    fi
 fi
 
 # Install tasksel if not already installed
@@ -49,7 +57,7 @@ fi
 # Install MATE Desktop using tasksel as root
 if ! step_completed "install_mate"; then
     echo "Installing MATE Desktop..."
-    echo "MATE Desktop must be installed as root. Please switch to root using 'su' and enter the root password."
+    echo "MATE Desktop must be installed as root. Please enter the root password when prompted."
     su -c "tasksel"
 fi
 
@@ -70,6 +78,21 @@ if ! step_completed "configure_xrdp"; then
     echo "Configuring xRDP to use MATE..."
     echo "mate-session" > ~/.xsession
     sudo systemctl restart xrdp
+fi
+
+# Set MATE as the default session manager
+if ! step_completed "set_mate_default"; then
+    echo "Setting MATE as the default session manager..."
+    sudo update-alternatives --config x-session-manager <<< '2'  # Select MATE
+    sudo update-alternatives --config x-session-manager <<< '0'  # Set to auto mode
+fi
+
+# Prompt user to reboot before continuing
+if ! step_completed "reboot_before_rivendell"; then
+    echo "A newer kernel is available. You must reboot to load the new kernel before continuing."
+    confirm "Would you like to reboot now?"
+    echo "Rebooting system..."
+    sudo reboot
 fi
 
 # Install Rivendell
@@ -215,7 +238,7 @@ if ! step_completed "fix_qt5"; then
 fi
 
 # Prompt user to reboot
-if ! step_completed "reboot"; then
+if ! step_completed "final_reboot"; then
     confirm "Would you like to reboot now to apply changes?"
     echo "Rebooting system..."
     sudo reboot
