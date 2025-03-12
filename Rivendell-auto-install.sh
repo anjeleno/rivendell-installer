@@ -92,7 +92,7 @@ sudo -u rd mkdir -p /home/rd/imports /home/rd/logs
 
 # Download APPS folder
 echo "Downloading APPS folder..."
-sudo -u rd git clone https://github.com/anjeleno/Rivendell-Cloud.git /home/rd/imports/APPS
+sudo -u rd git clone https://github.com/anjeleno/Rivendell-Cloud.git #/home/rd/imports/APPS
 
 # Move APPS and Shortcuts and make executable
 # Define the paths
