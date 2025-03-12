@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Tramsitter
+Comment=
+Exec=/home/rd/apps/liquidsoap.sh
+Icon=transmission
+Path=
+Terminal=false
+StartupNotify=false

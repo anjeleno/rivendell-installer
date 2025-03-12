@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=StereoTool
+Comment=
+Exec=/home/rd/apps/stereo_tool_gui_jack_64
+Icon=audio-subwoofer-testing
+Path=
+Terminal=false
+StartupNotify=false
