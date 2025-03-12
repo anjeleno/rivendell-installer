@@ -7,61 +7,96 @@ confirm() {
     [[ $REPLY =~ ^[Yy]$ ]] || exit 1
 }
 
+# Function to check if a step has already been completed
+step_completed() {
+    local step_name="$1"
+    if [ -f "/tmp/rivendell_install_$step_name" ]; then
+        echo "Step '$step_name' already completed. Skipping..."
+        return 0
+    else
+        touch "/tmp/rivendell_install_$step_name"
+        return 1
+    fi
+}
+
 # Update and upgrade the system
-echo "Updating system..."
-sudo apt update && sudo apt dist-upgrade -y
+if ! step_completed "system_update"; then
+    echo "Updating system..."
+    sudo apt update && sudo apt dist-upgrade -y
+fi
 
 # Set hostname and timezone
-echo "Setting hostname and timezone..."
-sudo hostnamectl set-hostname onair
-sudo timedatectl set-timezone America/Los_Angeles
-sudo timedatectl set-ntp yes
+if ! step_completed "hostname_timezone"; then
+    echo "Setting hostname and timezone..."
+    sudo hostnamectl set-hostname onair
+    sudo timedatectl set-timezone America/Los_Angeles
+    sudo timedatectl set-ntp yes
+fi
 
 # Create 'rd' user and add to sudo group
-echo "Creating 'rd' user..."
-sudo adduser --gecos "" rd
-sudo usermod -aG sudo rd  # Add rd to sudo group
+if ! step_completed "create_rd_user"; then
+    echo "Creating 'rd' user..."
+    sudo adduser --gecos "" rd
+    sudo usermod -aG sudo rd  # Add rd to sudo group
+fi
+
+# Install tasksel if not already installed
+if ! step_completed "install_tasksel"; then
+    echo "Installing tasksel..."
+    sudo apt install tasksel -y
+fi
 
 # Install MATE Desktop using tasksel as root
-echo "Installing MATE Desktop..."
-echo "MATE Desktop must be installed as root. Please switch to root using 'su' and enter the root password."
-su -c "tasksel"
+if ! step_completed "install_mate"; then
+    echo "Installing MATE Desktop..."
+    echo "MATE Desktop must be installed as root. Please switch to root using 'su' and enter the root password."
+    su -c "tasksel"
+fi
 
 # Drop back to the 'rd' user after MATE installation
-echo "Switching back to the 'rd' user..."
-su rd -c "echo 'Now running as rd user: $(whoami)'"
+if ! step_completed "switch_to_rd"; then
+    echo "Switching back to the 'rd' user..."
+    su rd -c "echo 'Now running as rd user: $(whoami)'"
+fi
 
 # Install xRDP
-echo "Installing xRDP..."
-sudo apt install xrdp dbus-x11 -y
-
-# Set MATE as the default session manager
-echo "Setting MATE as the default session manager..."
-sudo update-alternatives --config x-session-manager <<< '2'  # Select MATE
-sudo update-alternatives --config x-session-manager <<< '0'  # Set to auto mode
+if ! step_completed "install_xrdp"; then
+    echo "Installing xRDP..."
+    sudo apt install xrdp dbus-x11 -y
+fi
 
 # Configure xRDP to use MATE
-# echo "Configuring xRDP to use MATE..."
-# echo "mate-session" > ~/.xsession
-# sudo systemctl restart xrdp
+if ! step_completed "configure_xrdp"; then
+    echo "Configuring xRDP to use MATE..."
+    echo "mate-session" > ~/.xsession
+    sudo systemctl restart xrdp
+fi
 
 # Install Rivendell
-echo "Installing Rivendell..."
-wget https://software.paravelsystems.com/ubuntu/dists/jammy/main/install_rivendell.sh
-chmod +x install_rivendell.sh
-echo "2" | sudo ./install_rivendell.sh  # Automatically select '2' for Server install
+if ! step_completed "install_rivendell"; then
+    echo "Installing Rivendell..."
+    wget https://software.paravelsystems.com/ubuntu/dists/jammy/main/install_rivendell.sh
+    chmod +x install_rivendell.sh
+    echo "2" | sudo ./install_rivendell.sh  # Automatically select '2' for Server install
+fi
 
 # Add Rivendell to audio group
-sudo usermod -aG audio rivendell
+if ! step_completed "add_rivendell_to_audio"; then
+    echo "Adding Rivendell to audio group..."
+    sudo usermod -aG audio rivendell
+fi
 
 # Install broadcasting tools (Icecast, JACK, Liquidsoap, VLC)
-echo "Installing broadcasting tools..."
-sudo apt install -y icecast2 jackd2 qjackctl liquidsoap vlc vlc-plugin-jack gnome-system-monitor
+if ! step_completed "install_broadcasting_tools"; then
+    echo "Installing broadcasting tools..."
+    sudo apt install -y icecast2 jackd2 qjackctl liquidsoap vlc vlc-plugin-jack gnome-system-monitor
+fi
 
 # Configure Icecast
-echo "Configuring Icecast..."
-sudo cp /etc/icecast2/icecast.xml /etc/icecast2/icecast.xml-backup
-sudo tee -a /etc/icecast2/icecast.xml <<EOL
+if ! step_completed "configure_icecast"; then
+    echo "Configuring Icecast..."
+    sudo cp /etc/icecast2/icecast.xml /etc/icecast2/icecast.xml-backup
+    sudo tee -a /etc/icecast2/icecast.xml <<EOL
 <authentication>
     <source-password>hackme$</source-password>
     <relay-password>hackme$$</relay-password>
@@ -74,87 +109,114 @@ sudo tee -a /etc/icecast2/icecast.xml <<EOL
     <shoutcast-mount>/stream</shoutcast-mount>
 </listen-socket>
 EOL
+fi
 
 # Enable and start Icecast
-echo "Enabling and starting Icecast..."
-sudo systemctl daemon-reload
-sudo systemctl enable icecast2
-sudo systemctl start icecast2
-sudo systemctl status icecast2
+if ! step_completed "enable_icecast"; then
+    echo "Enabling and starting Icecast..."
+    sudo systemctl daemon-reload
+    sudo systemctl enable icecast2
+    sudo systemctl start icecast2
+    sudo systemctl status icecast2
+fi
 
 # Disable PulseAudio and configure audio
-echo "Disabling PulseAudio..."
-sudo killall pulseaudio || true
-sudo sed -i 's/# autospawn = yes/autospawn = no/' /etc/pulse/client.conf
-sudo gpasswd -d pulse audio
-sudo usermod -aG audio rd rivendell liquidsoap
-sudo tee -a /etc/security/limits.conf <<EOL
+if ! step_completed "disable_pulseaudio"; then
+    echo "Disabling PulseAudio..."
+    sudo killall pulseaudio || true
+    sudo sed -i 's/# autospawn = yes/autospawn = no/' /etc/pulse/client.conf
+    sudo gpasswd -d pulse audio
+    sudo usermod -aG audio rd rivendell liquidsoap
+    sudo tee -a /etc/security/limits.conf <<EOL
 @audio      hard      rtprio          90
 @audio      hard      memlock     unlimited
 EOL
+fi
 
 # Create directories
-echo "Creating directories..."
-sudo -u rd mkdir -p /home/rd/imports /home/rd/logs
+if ! step_completed "create_directories"; then
+    echo "Creating directories..."
+    sudo -u rd mkdir -p /home/rd/imports /home/rd/logs
+fi
 
 # Download APPS folder
-echo "Downloading APPS folder..."
-sudo -u rd git clone https://github.com/anjeleno/Rivendell-Cloud.git /home/rd/Rivendell-Cloud
+if ! step_completed "download_apps"; then
+    echo "Downloading APPS folder..."
+    sudo -u rd git clone https://github.com/anjeleno/Rivendell-Cloud.git /home/rd/Rivendell-Cloud
+fi
 
 # Move APPS folder and set permissions
-echo "Moving APPS folder and setting permissions..."
-APPS_SRC="/home/rd/Rivendell-Cloud/APPS"
-APPS_DEST="/home/rd/imports/APPS"
-sudo -u rd mv "$APPS_SRC" "$APPS_DEST"
-sudo -u rd chmod -R +x "$APPS_DEST"
-sudo -u rd chown -R rd:rd "$APPS_DEST"
+if ! step_completed "move_apps"; then
+    echo "Moving APPS folder and setting permissions..."
+    APPS_SRC="/home/rd/Rivendell-Cloud/APPS"
+    APPS_DEST="/home/rd/imports/APPS"
+    sudo -u rd mv "$APPS_SRC" "$APPS_DEST"
+    sudo -u rd chmod -R +x "$APPS_DEST"
+    sudo -u rd chown -R rd:rd "$APPS_DEST"
+fi
 
 # Move desktop shortcuts
-echo "Moving desktop shortcuts..."
-DESKTOP_SHORTCUTS="$APPS_DEST/Desktop Shortcuts"
-USER_DESKTOP="/home/rd/Desktop"
-sudo -u rd mv "$DESKTOP_SHORTCUTS"/* "$USER_DESKTOP"
+if ! step_completed "move_shortcuts"; then
+    echo "Moving desktop shortcuts..."
+    DESKTOP_SHORTCUTS="$APPS_DEST/Desktop Shortcuts"
+    USER_DESKTOP="/home/rd/Desktop"
+    sudo -u rd mv "$DESKTOP_SHORTCUTS"/* "$USER_DESKTOP"
+fi
 
 # Extract MySQL password from rd.conf
-echo "Extracting MySQL password from /etc/rd.conf..."
-MYSQL_PASSWORD=$(grep -oP '(?<=Password=).*' /etc/rd.conf)
-echo "Using extracted MySQL password."
+if ! step_completed "extract_mysql_password"; then
+    echo "Extracting MySQL password from /etc/rd.conf..."
+    MYSQL_PASSWORD=$(grep -oP '(?<=Password=).*' /etc/rd.conf)
+    echo "Using extracted MySQL password."
+fi
 
 # Inject MySQL password into backup script
-echo "Updating daily_db_backup.sh with MySQL password..."
-sudo sed -i "s|Password=.*|Password=$MYSQL_PASSWORD|" "$APPS_DEST/.sql/daily_db_backup.sh"
+if ! step_completed "update_backup_script"; then
+    echo "Updating daily_db_backup.sh with MySQL password..."
+    sudo sed -i "s|Password=.*|Password=$MYSQL_PASSWORD|" "$APPS_DEST/.sql/daily_db_backup.sh"
+fi
 
 # Configure cron jobs
-echo "Configuring cron jobs..."
-(crontab -l 2>/dev/null; echo "05 00 * * * $APPS_DEST/.sql/daily_db_backup.sh >> $APPS_DEST/.sql/cron_execution.log 2>&1") | crontab -
-(crontab -l 2>/dev/null; echo "15 00 * * * $APPS_DEST/autologgen.sh") | crontab -
+if ! step_completed "configure_cron"; then
+    echo "Configuring cron jobs..."
+    (crontab -l 2>/dev/null; echo "05 00 * * * $APPS_DEST/.sql/daily_db_backup.sh >> $APPS_DEST/.sql/cron_execution.log 2>&1") | crontab -
+    (crontab -l 2>/dev/null; echo "15 00 * * * $APPS_DEST/autologgen.sh") | crontab -
+fi
 
 # Enable firewall
-echo "Configuring firewall..."
-sudo apt install -y ufw
+if ! step_completed "enable_firewall"; then
+    echo "Configuring firewall..."
+    sudo apt install -y ufw
 
-# Prompt user for external IP
-echo "Please enter your external IP address to allow in the firewall:"
-read -p "External IP: " EXTERNAL_IP
+    # Prompt user for external IP
+    echo "Please enter your external IP address to allow in the firewall:"
+    read -p "External IP: " EXTERNAL_IP
 
-# Apply firewall rules
-sudo ufw allow 8000/tcp
-sudo ufw allow ssh
-sudo ufw allow from "$EXTERNAL_IP"
-sudo ufw enable
+    # Apply firewall rules
+    sudo ufw allow 8000/tcp
+    sudo ufw allow ssh
+    sudo ufw allow from "$EXTERNAL_IP"
+    sudo ufw enable
+fi
 
 # Harden SSH access
-echo "Hardening SSH access..."
-sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config-BAK
-sudo sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/g' /etc/ssh/sshd_config
-sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/g' /etc/ssh/sshd_config
-sudo systemctl restart ssh
+if ! step_completed "harden_ssh"; then
+    echo "Hardening SSH access..."
+    sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config-BAK
+    sudo sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/g' /etc/ssh/sshd_config
+    sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/g' /etc/ssh/sshd_config
+    sudo systemctl restart ssh
+fi
 
 # Fix QT5 XCB error
-echo "Fixing QT5 XCB error..."
-sudo ln -s /home/rd/.Xauthority /root/.Xauthority
+if ! step_completed "fix_qt5"; then
+    echo "Fixing QT5 XCB error..."
+    sudo ln -s /home/rd/.Xauthority /root/.Xauthority
+fi
 
 # Prompt user to reboot
-confirm "Would you like to reboot now to apply changes?"
-echo "Rebooting system..."
-sudo reboot
+if ! step_completed "reboot"; then
+    confirm "Would you like to reboot now to apply changes?"
+    echo "Rebooting system..."
+    sudo reboot
+fi
