@@ -32,13 +32,16 @@ fi
 # Set hostname and timezone
 if ! step_completed "hostname_timezone"; then
     echo "Setting hostname and timezone..."
-    sudo hostnamectl set-hostname onair
 
-    # Update /etc/hosts with the new hostname
-    echo "Updating /etc/hosts with the new hostname..."
+    # Set hostname
+    sudo hostnamectl set-hostname onair
     sudo sed -i "/127.0.1.1/c\127.0.1.1\tonair" /etc/hosts
 
-    sudo timedatectl set-timezone America/Los_Angeles
+    # Interactive timezone selection
+    echo "Please select your timezone:"
+    sudo dpkg-reconfigure tzdata
+
+    # Enable NTP
     sudo timedatectl set-ntp yes
 fi
 
@@ -72,6 +75,9 @@ if ! step_completed "switch_to_rd"; then
     su rd -c "echo 'Now running as rd user: $(whoami)'"
 fi
 
+# Ensure the script is running as the 'rd' user before proceeding
+ensure_rd_user
+
 # Install xRDP
 if ! step_completed "install_xrdp"; then
     echo "Installing xRDP..."
@@ -99,6 +105,9 @@ if ! step_completed "reboot_before_rivendell"; then
     echo "Rebooting system..."
     sudo reboot
 fi
+
+# Ensure the script is running as the 'rd' user before installing Rivendell
+ensure_rd_user
 
 # Install Rivendell
 if ! step_completed "install_rivendell"; then
@@ -145,7 +154,7 @@ if ! step_completed "enable_icecast"; then
     sudo systemctl daemon-reload
     sudo systemctl enable icecast2
     sudo systemctl start icecast2
-    sudo systemctl status icecast2 --no-pager
+    echo "Icecast service enabled and started. Skipping status check to avoid blocking the script."
 fi
 
 # Disable PulseAudio and configure audio
@@ -164,13 +173,14 @@ fi
 # Create directories as 'rd' user
 if ! step_completed "create_directories"; then
     echo "Creating directories..."
-    sudo -u rd mkdir -p /home/rd/imports /home/rd/logs
+    mkdir -p /home/rd/imports /home/rd/logs
+    chown rd:rd /home/rd/imports /home/rd/logs
 fi
 
 # Download APPS folder as 'rd' user
 if ! step_completed "download_apps"; then
     echo "Downloading APPS folder..."
-    sudo -u rd git clone https://github.com/anjeleno/Rivendell-Cloud.git /home/rd/Rivendell-Cloud
+    git clone https://github.com/anjeleno/Rivendell-Cloud.git /home/rd/Rivendell-Cloud
 fi
 
 # Move APPS folder and set permissions as 'rd' user
@@ -178,9 +188,9 @@ if ! step_completed "move_apps"; then
     echo "Moving APPS folder and setting permissions..."
     APPS_SRC="/home/rd/Rivendell-Cloud/APPS"
     APPS_DEST="/home/rd/imports/APPS"
-    sudo -u rd mv "$APPS_SRC" "$APPS_DEST"
-    sudo -u rd chmod -R +x "$APPS_DEST"
-    sudo -u rd chown -R rd:rd "$APPS_DEST"
+    mv "$APPS_SRC" "$APPS_DEST"
+    chmod -R +x "$APPS_DEST"
+    chown -R rd:rd "$APPS_DEST"
 fi
 
 # Move desktop shortcuts as 'rd' user
@@ -188,13 +198,7 @@ if ! step_completed "move_shortcuts"; then
     echo "Moving desktop shortcuts..."
     DESKTOP_SHORTCUTS="$APPS_DEST/Desktop Shortcuts"
     USER_DESKTOP="/home/rd/Desktop"
-    sudo -u rd mv "$DESKTOP_SHORTCUTS"/* "$USER_DESKTOP"
-fi
-
-# Fix QT5 XCB error
-if ! step_completed "fix_qt5"; then
-    echo "Fixing QT5 XCB error..."
-    sudo ln -s /home/rd/.Xauthority /root/.Xauthority
+    mv "$DESKTOP_SHORTCUTS"/* "$USER_DESKTOP"
 fi
 
 # Extract MySQL password from rd.conf
@@ -207,7 +211,7 @@ fi
 # Inject MySQL password into backup script
 if ! step_completed "update_backup_script"; then
     echo "Updating daily_db_backup.sh with MySQL password..."
-    sudo sed -i "s|Password=.*|Password=$MYSQL_PASSWORD|" "$APPS_DEST/.sql/daily_db_backup.sh"
+    sed -i "s|Password=.*|Password=$MYSQL_PASSWORD|" "$APPS_DEST/.sql/daily_db_backup.sh"
 fi
 
 # Configure cron jobs
@@ -240,6 +244,12 @@ if ! step_completed "harden_ssh"; then
     sudo sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/g' /etc/ssh/sshd_config
     sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/g' /etc/ssh/sshd_config
     sudo systemctl restart ssh
+fi
+
+# Fix QT5 XCB error
+if ! step_completed "fix_qt5"; then
+    echo "Fixing QT5 XCB error..."
+    sudo ln -s /home/rd/.Xauthority /root/.Xauthority
 fi
 
 # Prompt user to reboot
