@@ -3,7 +3,8 @@ set -e  # Exit on error
 
 # Persistent step tracking directory
 STEP_DIR="/home/rd/rivendell_install_steps"
-mkdir -p "$STEP_DIR"
+sudo mkdir -p "$STEP_DIR"
+sudo chown rd:rd "$STEP_DIR"  # Ensure rd owns the step tracking directory
 
 # Function to prompt user for confirmation
 confirm() {
@@ -80,16 +81,14 @@ if ! step_completed "install_mate"; then
     su -c "tasksel"
 fi
 
-# Drop back to the 'rd' user after MATE installation / might need to revise this because we're not falling back to rd yet. we haven't logged into to rd. we're still running as the default user: ubuntu.
-if ! step_completed "switch_to_rd"; then
-    echo "Switching back to the 'rd' user..."
-    while [ "$(whoami)" != "rd" ]; do
-        echo "Please switch to the 'rd' user by running:"
-        echo "  su rd"
-        echo "Then rerun the script."
-        read -p "Press Enter to continue after switching to 'rd'..."
-    done
-    echo "Now running as rd user: $(whoami)"
+# After installing MATE, fall back to the current user (not necessarily rd)
+if ! step_completed "switch_to_current_user"; then
+    echo "MATE Desktop installation complete. Falling back to the current user: $(whoami)."
+    echo "Please log in as the 'rd' user to continue the installation."
+    echo "To switch to the 'rd' user, run:"
+    echo "  su rd"
+    echo "Then rerun the script."
+    exit 0
 fi
 
 # Ensure the script is running as the 'rd' user before proceeding
@@ -104,7 +103,8 @@ fi
 # Configure xRDP to use MATE
 if ! step_completed "configure_xrdp"; then
     echo "Configuring xRDP to use MATE..."
-    echo "mate-session" > ~/.xsession
+    echo "mate-session" | sudo tee /home/rd/.xsession > /dev/null
+    sudo chown rd:rd /home/rd/.xsession  # Ensure rd owns the file
     sudo systemctl restart xrdp
 fi
 
@@ -233,6 +233,12 @@ if ! step_completed "configure_cron"; then
     (crontab -l 2>/dev/null; echo "15 00 * * * /home/rd/imports/APPS/autologgen.sh") | crontab -
 fi
 
+# Fix QT5 XCB error
+if ! step_completed "fix_qt5"; then
+    echo "Fixing QT5 XCB error..."
+    sudo ln -s /home/rd/.Xauthority /root/.Xauthority
+fi
+
 # Enable firewall
 if ! step_completed "enable_firewall"; then
     echo "Configuring firewall..."
@@ -267,12 +273,6 @@ if ! step_completed "harden_ssh"; then
     sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/g' /etc/ssh/sshd_config
     sudo systemctl restart ssh
     echo "SSH access has been hardened. Password authentication is now disabled."
-fi
-
-# Fix QT5 XCB error
-if ! step_completed "fix_qt5"; then
-    echo "Fixing QT5 XCB error..."
-    sudo ln -s /home/rd/.Xauthority /root/.Xauthority
 fi
 
 # Prompt user to reboot
