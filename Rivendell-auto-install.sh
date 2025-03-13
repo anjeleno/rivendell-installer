@@ -1,11 +1,6 @@
 #!/bin/bash
 set -e  # Exit on error
 
-# Persistent step tracking directory
-STEP_DIR="/home/rd/rivendell_install_steps"
-sudo mkdir -p "$STEP_DIR"
-sudo chown rd:rd "$STEP_DIR"  # Ensure rd owns the step tracking directory
-
 # Function to prompt user for confirmation
 confirm() {
     read -p "$1 (y/n): " REPLY
@@ -74,6 +69,11 @@ if ! step_completed "create_rd_user"; then
         echo "User 'rd' already exists. Skipping..."
     fi
 fi
+
+# Persistent step tracking directory (moved after 'rd' user creation)
+STEP_DIR="/home/rd/rivendell_install_steps"
+sudo mkdir -p "$STEP_DIR"
+sudo chown rd:rd "$STEP_DIR"  # Ensure rd owns the step tracking directory
 
 # Install tasksel if not already installed
 if ! step_completed "install_tasksel"; then
