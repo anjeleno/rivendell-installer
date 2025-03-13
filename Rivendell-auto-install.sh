@@ -45,7 +45,7 @@ ensure_rd_user() {
 # Update and upgrade the system
 if ! step_completed "system_update"; then
     echo "Updating system..."
-    sudo apt update && sudo apt dist-upgrade -y
+    sudo apt-get update && sudo apt-get dist-upgrade -y
 fi
 
 # Set hostname and timezone
@@ -56,9 +56,13 @@ if ! step_completed "hostname_timezone"; then
     sudo hostnamectl set-hostname onair
     sudo sed -i "/127.0.1.1/c\127.0.1.1\tonair" /etc/hosts
 
-    # Interactive timezone selection
-    echo "Please select your timezone:"
-    sudo dpkg-reconfigure tzdata
+    # Prompt user for timezone
+    echo "Please enter your timezone (e.g., America/New_York):"
+    read -p "Timezone: " TIMEZONE
+
+    # Set timezone non-interactively
+    echo "$TIMEZONE" | sudo tee /etc/timezone
+    sudo dpkg-reconfigure --frontend noninteractive tzdata
 
     # Enable NTP
     sudo timedatectl set-ntp yes
@@ -97,7 +101,7 @@ fi
 # Install tasksel if not already installed
 if ! step_completed "install_tasksel"; then
     echo "Installing tasksel..."
-    sudo apt install tasksel -y
+    sudo apt-get install tasksel -y
 fi
 
 # Install MATE Desktop using tasksel as root
@@ -123,7 +127,7 @@ ensure_rd_user
 # Install xRDP
 if ! step_completed "install_xrdp"; then
     echo "Installing xRDP..."
-    sudo apt install xrdp dbus-x11 -y
+    sudo apt-get install xrdp dbus-x11 -y
 fi
 
 # Configure xRDP to use MATE
@@ -163,7 +167,7 @@ fi
 # Install broadcasting tools (Icecast, JACK, Liquidsoap, VLC)
 if ! step_completed "install_broadcasting_tools"; then
     echo "Installing broadcasting tools..."
-    sudo apt install -y icecast2 jackd2 qjackctl liquidsoap vlc vlc-plugin-jack gnome-system-monitor
+    sudo apt-get install -y icecast2 jackd2 qjackctl liquidsoap vlc vlc-plugin-jack gnome-system-monitor
 fi
 
 # Configure Icecast
@@ -288,7 +292,7 @@ fi
 # Enable firewall
 if ! step_completed "enable_firewall"; then
     echo "Configuring firewall..."
-    sudo apt install -y ufw
+    sudo apt-get install -y ufw
 
     # Prompt user for external IP
     echo "Please enter your external IP address to allow in the firewall:"
@@ -314,11 +318,16 @@ if ! step_completed "harden_ssh"; then
     echo "WARNING: This will disable password authentication and allow only SSH key-based login."
     echo "Ensure you have added your SSH public key to ~/.ssh/authorized_keys and confirmed you can log in with it."
     confirm "Have you confirmed SSH key-based login works and want to proceed with hardening SSH?"
+
+    # Backup SSH config files
     sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config-BAK
+    sudo cp /etc/ssh/sshd_config.d/50-cloud-init.conf /etc/ssh/sshd_config.d/50-cloud-init.conf-BAK
+
+    # Disable password authentication in sshd_config
     sudo sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/g' /etc/ssh/sshd_config
     sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/g' /etc/ssh/sshd_config
 
-        # Disable password authentication in 50-cloud-init.conf
+    # Disable password authentication in 50-cloud-init.conf
     sudo sed -i 's/PasswordAuthentication yes/PasswordAuthentication no/g' /etc/ssh/sshd_config.d/50-cloud-init.conf
 
     sudo systemctl restart ssh
