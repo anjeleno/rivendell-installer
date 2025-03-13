@@ -23,6 +23,17 @@ step_completed() {
     fi
 }
 
+# Function to ensure the script is running as the 'rd' user
+ensure_rd_user() {
+    if [ "$(whoami)" != "rd" ]; then
+        echo "The script must be run as the 'rd' user. Please switch to the 'rd' user and rerun the script."
+        echo "To switch to the 'rd' user, run:"
+        echo "  su rd"
+        echo "Then rerun the script."
+        exit 1
+    fi
+}
+
 # Update and upgrade the system
 if ! step_completed "system_update"; then
     echo "Updating system..."
@@ -49,7 +60,7 @@ fi
 if ! step_completed "create_rd_user"; then
     echo "Creating 'rd' user..."
     if ! id -u rd >/dev/null 2>&1; then
-        sudo adduser --gecos "" rd
+        sudo adduser --gecos "Rivendell Audio,,," rd
         sudo usermod -aG sudo rd  # Add rd to sudo group
     else
         echo "User 'rd' already exists. Skipping..."
@@ -69,10 +80,16 @@ if ! step_completed "install_mate"; then
     su -c "tasksel"
 fi
 
-# Drop back to the 'rd' user after MATE installation
+# Drop back to the 'rd' user after MATE installation / might need to revise this because we're not falling back to rd yet. we haven't logged into to rd. we're still running as the default user: ubuntu.
 if ! step_completed "switch_to_rd"; then
     echo "Switching back to the 'rd' user..."
-    su rd -c "echo 'Now running as rd user: $(whoami)'"
+    while [ "$(whoami)" != "rd" ]; do
+        echo "Please switch to the 'rd' user by running:"
+        echo "  su rd"
+        echo "Then rerun the script."
+        read -p "Press Enter to continue after switching to 'rd'..."
+    done
+    echo "Now running as rd user: $(whoami)"
 fi
 
 # Ensure the script is running as the 'rd' user before proceeding
@@ -117,12 +134,6 @@ if ! step_completed "install_rivendell"; then
     echo "2" | sudo ./install_rivendell.sh  # Automatically select '2' for Server install
 fi
 
-# Add Rivendell to audio group
-if ! step_completed "add_rivendell_to_audio"; then
-    echo "Adding Rivendell to audio group..."
-    sudo usermod -aG audio rivendell
-fi
-
 # Install broadcasting tools (Icecast, JACK, Liquidsoap, VLC)
 if ! step_completed "install_broadcasting_tools"; then
     echo "Installing broadcasting tools..."
@@ -143,6 +154,7 @@ if ! step_completed "configure_icecast"; then
 
 <listen-socket>
     <port>8000</port>
+    <shoutcast-mount>/192</shoutcast-mount>
     <shoutcast-mount>/stream</shoutcast-mount>
 </listen-socket>
 EOL
@@ -230,20 +242,31 @@ if ! step_completed "enable_firewall"; then
     echo "Please enter your external IP address to allow in the firewall:"
     read -p "External IP: " EXTERNAL_IP
 
+    # Prompt user for LAN IP (for local VM environments)
+    echo "Please enter your LAN IP address (if applicable, otherwise press Enter):"
+    read -p "LAN IP: " LAN_IP
+
     # Apply firewall rules
     sudo ufw allow 8000/tcp
     sudo ufw allow ssh
     sudo ufw allow from "$EXTERNAL_IP"
+    if [ -n "$LAN_IP" ]; then
+        sudo ufw allow from "$LAN_IP"
+    fi
     sudo ufw enable
 fi
 
 # Harden SSH access
 if ! step_completed "harden_ssh"; then
     echo "Hardening SSH access..."
+    echo "WARNING: This will disable password authentication and allow only SSH key-based login."
+    echo "Ensure you have added your SSH public key to ~/.ssh/authorized_keys and confirmed you can log in with it."
+    confirm "Have you confirmed SSH key-based login works and want to proceed with hardening SSH?"
     sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config-BAK
     sudo sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/g' /etc/ssh/sshd_config
     sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/g' /etc/ssh/sshd_config
     sudo systemctl restart ssh
+    echo "SSH access has been hardened. Password authentication is now disabled."
 fi
 
 # Fix QT5 XCB error
