@@ -4,6 +4,7 @@ set -e  # Exit on error
 # Persistent step tracking directory
 STEP_DIR="/home/rd/rivendell_install_steps"
 sudo mkdir -p "$STEP_DIR"
+sudo chown rd:rd "$STEP_DIR"  # Ensure rd owns the step tracking directory
 
 # Function to prompt user for confirmation
 confirm() {
@@ -60,15 +61,19 @@ fi
 if ! step_completed "create_rd_user"; then
     echo "Creating 'rd' user..."
     if ! id -u rd >/dev/null 2>&1; then
-        sudo adduser --gecos "Rivendell Audio,,," rd
+        # Create the 'rd' user with a home directory and proper permissions
+        sudo adduser --gecos "Rivendell Audio,,," --home /home/rd rd
         sudo usermod -aG sudo rd  # Add rd to sudo group
+
+        # Ensure the home directory is owned by 'rd' and has correct permissions
+        sudo chown -R rd:rd /home/rd
+        sudo chmod 755 /home/rd
+
+        echo "User 'rd' created. Skeleton files copied to /home/rd."
     else
         echo "User 'rd' already exists. Skipping..."
     fi
 fi
-
-# Ensure the step tracking directory is owned by the 'rd' user
-sudo chown rd:rd "$STEP_DIR"
 
 # Install tasksel if not already installed
 if ! step_completed "install_tasksel"; then
@@ -215,6 +220,12 @@ if ! step_completed "move_shortcuts"; then
     mv "$DESKTOP_SHORTCUTS"/* "$USER_DESKTOP"
 fi
 
+# Fix QT5 XCB error
+if ! step_completed "fix_qt5"; then
+    echo "Fixing QT5 XCB error..."
+    sudo ln -s /home/rd/.Xauthority /root/.Xauthority
+fi
+
 # Extract MySQL password from rd.conf
 if ! step_completed "extract_mysql_password"; then
     echo "Extracting MySQL password from /etc/rd.conf..."
@@ -269,12 +280,6 @@ if ! step_completed "harden_ssh"; then
     sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/g' /etc/ssh/sshd_config
     sudo systemctl restart ssh
     echo "SSH access has been hardened. Password authentication is now disabled."
-fi
-
-# Fix QT5 XCB error
-if ! step_completed "fix_qt5"; then
-    echo "Fixing QT5 XCB error..."
-    sudo ln -s /home/rd/.Xauthority /root/.Xauthority
 fi
 
 # Prompt user to reboot
