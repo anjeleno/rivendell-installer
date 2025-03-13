@@ -33,6 +33,11 @@ fi
 if ! step_completed "hostname_timezone"; then
     echo "Setting hostname and timezone..."
     sudo hostnamectl set-hostname onair
+
+    # Update /etc/hosts with the new hostname
+    echo "Updating /etc/hosts with the new hostname..."
+    sudo sed -i "/127.0.1.1/c\127.0.1.1\tonair" /etc/hosts
+
     sudo timedatectl set-timezone America/Los_Angeles
     sudo timedatectl set-ntp yes
 fi
@@ -134,13 +139,13 @@ if ! step_completed "configure_icecast"; then
 EOL
 fi
 
-# Enable and start Icecast
+# Enable and start Icecast (without blocking the script)
 if ! step_completed "enable_icecast"; then
     echo "Enabling and starting Icecast..."
     sudo systemctl daemon-reload
     sudo systemctl enable icecast2
     sudo systemctl start icecast2
-    sudo systemctl status icecast2
+    sudo systemctl status icecast2 --no-pager
 fi
 
 # Disable PulseAudio and configure audio
@@ -156,19 +161,19 @@ if ! step_completed "disable_pulseaudio"; then
 EOL
 fi
 
-# Create directories
+# Create directories as 'rd' user
 if ! step_completed "create_directories"; then
     echo "Creating directories..."
     sudo -u rd mkdir -p /home/rd/imports /home/rd/logs
 fi
 
-# Download APPS folder
+# Download APPS folder as 'rd' user
 if ! step_completed "download_apps"; then
     echo "Downloading APPS folder..."
     sudo -u rd git clone https://github.com/anjeleno/Rivendell-Cloud.git /home/rd/Rivendell-Cloud
 fi
 
-# Move APPS folder and set permissions
+# Move APPS folder and set permissions as 'rd' user
 if ! step_completed "move_apps"; then
     echo "Moving APPS folder and setting permissions..."
     APPS_SRC="/home/rd/Rivendell-Cloud/APPS"
@@ -178,12 +183,18 @@ if ! step_completed "move_apps"; then
     sudo -u rd chown -R rd:rd "$APPS_DEST"
 fi
 
-# Move desktop shortcuts
+# Move desktop shortcuts as 'rd' user
 if ! step_completed "move_shortcuts"; then
     echo "Moving desktop shortcuts..."
     DESKTOP_SHORTCUTS="$APPS_DEST/Desktop Shortcuts"
     USER_DESKTOP="/home/rd/Desktop"
     sudo -u rd mv "$DESKTOP_SHORTCUTS"/* "$USER_DESKTOP"
+fi
+
+# Fix QT5 XCB error
+if ! step_completed "fix_qt5"; then
+    echo "Fixing QT5 XCB error..."
+    sudo ln -s /home/rd/.Xauthority /root/.Xauthority
 fi
 
 # Extract MySQL password from rd.conf
@@ -202,8 +213,8 @@ fi
 # Configure cron jobs
 if ! step_completed "configure_cron"; then
     echo "Configuring cron jobs..."
-    (crontab -l 2>/dev/null; echo "05 00 * * * $APPS_DEST/.sql/daily_db_backup.sh >> $APPS_DEST/.sql/cron_execution.log 2>&1") | crontab -
-    (crontab -l 2>/dev/null; echo "15 00 * * * $APPS_DEST/autologgen.sh") | crontab -
+    (crontab -l 2>/dev/null; echo "05 00 * * * /home/rd/imports/APPS/.sql/daily_db_backup.sh >> /home/rd/imports/APPS/.sql/cron_execution.log 2>&1") | crontab -
+    (crontab -l 2>/dev/null; echo "15 00 * * * /home/rd/imports/APPS/autologgen.sh") | crontab -
 fi
 
 # Enable firewall
@@ -229,12 +240,6 @@ if ! step_completed "harden_ssh"; then
     sudo sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/g' /etc/ssh/sshd_config
     sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/g' /etc/ssh/sshd_config
     sudo systemctl restart ssh
-fi
-
-# Fix QT5 XCB error
-if ! step_completed "fix_qt5"; then
-    echo "Fixing QT5 XCB error..."
-    sudo ln -s /home/rd/.Xauthority /root/.Xauthority
 fi
 
 # Prompt user to reboot
