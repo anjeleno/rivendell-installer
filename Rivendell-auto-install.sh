@@ -4,7 +4,6 @@ set -e  # Exit on error
 # Persistent step tracking directory
 STEP_DIR="/home/rd/rivendell_install_steps"
 sudo mkdir -p "$STEP_DIR"
-sudo chown rd:rd "$STEP_DIR"  # Ensure rd owns the step tracking directory
 
 # Function to prompt user for confirmation
 confirm() {
@@ -67,6 +66,9 @@ if ! step_completed "create_rd_user"; then
         echo "User 'rd' already exists. Skipping..."
     fi
 fi
+
+# Ensure the step tracking directory is owned by the 'rd' user
+sudo chown rd:rd "$STEP_DIR"
 
 # Install tasksel if not already installed
 if ! step_completed "install_tasksel"; then
@@ -233,12 +235,6 @@ if ! step_completed "configure_cron"; then
     (crontab -l 2>/dev/null; echo "15 00 * * * /home/rd/imports/APPS/autologgen.sh") | crontab -
 fi
 
-# Fix QT5 XCB error
-if ! step_completed "fix_qt5"; then
-    echo "Fixing QT5 XCB error..."
-    sudo ln -s /home/rd/.Xauthority /root/.Xauthority
-fi
-
 # Enable firewall
 if ! step_completed "enable_firewall"; then
     echo "Configuring firewall..."
@@ -273,6 +269,12 @@ if ! step_completed "harden_ssh"; then
     sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/g' /etc/ssh/sshd_config
     sudo systemctl restart ssh
     echo "SSH access has been hardened. Password authentication is now disabled."
+fi
+
+# Fix QT5 XCB error
+if ! step_completed "fix_qt5"; then
+    echo "Fixing QT5 XCB error..."
+    sudo ln -s /home/rd/.Xauthority /root/.Xauthority
 fi
 
 # Prompt user to reboot
