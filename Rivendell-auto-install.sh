@@ -78,13 +78,13 @@ create_rd_user() {
         sudo chmod 755 /home/rd
 
         echo "User 'rd' created. Skeleton files copied to /home/rd."
+
+        # Create the step tracking directory after the 'rd' user is created
+        sudo mkdir -p "$STEP_DIR"
+        sudo chown rd:rd "$STEP_DIR"
     else
         echo "User 'rd' already exists. Skipping..."
     fi
-
-    # Create the step tracking directory after the 'rd' user is created
-    sudo mkdir -p "$STEP_DIR"
-    sudo chown rd:rd "$STEP_DIR"
 }
 
 # Install tasksel if not already installed
@@ -127,16 +127,17 @@ fix_qt5() {
     sudo ln -s /home/rd/.Xauthority /root/.Xauthority
 }
 
-# Prompt user to reboot before continuing
-if ! step_completed "reboot_before_rivendell"; then
+# Ensure the script is running as the 'rd' user before installing Rivendell
+ensure_rd_user
+
+# Prompt user to reboot before installing Rivendell
+if [ ! -f "$STEP_DIR/reboot_before_rivendell" ]; then
     echo "A newer kernel is available. You must reboot to load the new kernel before continuing."
     confirm "Would you like to reboot now?"
     echo "Rebooting system..."
+    touch "$STEP_DIR/reboot_before_rivendell"
     sudo reboot
 fi
-
-# Ensure the script is running as the 'rd' user before installing Rivendell
-ensure_rd_user
 
 # Install Rivendell
 install_rivendell() {
@@ -320,9 +321,11 @@ final_reboot() {
 }
 
 # Main script execution
-if ! step_completed system_update; then system_update; fi
-if ! step_completed hostname_timezone; then hostname_timezone; fi
-if ! step_completed create_rd_user; then create_rd_user; fi
+system_update
+hostname_timezone
+create_rd_user
+
+# Now that the 'rd' user and STEP_DIR exist, enable step tracking for the rest of the script
 if ! step_completed install_tasksel; then install_tasksel; fi
 if ! step_completed install_mate; then install_mate; fi
 if ! step_completed install_xrdp; then install_xrdp; fi
