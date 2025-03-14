@@ -39,14 +39,24 @@ ensure_rd_user() {
     fi
 }
 
+# Ensure the step tracking directory exists and is owned by 'rd'
+ensure_step_dir() {
+    if [ ! -d "$STEP_DIR" ]; then
+        sudo mkdir -p "$STEP_DIR"
+        sudo chown rd:rd "$STEP_DIR"
+    fi
+}
+
 # Update and upgrade the system
 system_update() {
+    step_completed system_update || return 0
     echo "Updating system..."
     sudo apt update && sudo apt dist-upgrade -y
 }
 
 # Set hostname and timezone
 hostname_timezone() {
+    step_completed hostname_timezone || return 0
     echo "Setting hostname and timezone..."
 
     # Set hostname
@@ -63,6 +73,7 @@ hostname_timezone() {
 
 # Create 'rd' user and add to sudo group
 create_rd_user() {
+    step_completed create_rd_user || return 0
     echo "Creating 'rd' user..."
     if ! id -u rd >/dev/null 2>&1; then
         # Create the 'rd' user with the correct full name and home directory
@@ -80,8 +91,7 @@ create_rd_user() {
         echo "User 'rd' created. Skeleton files copied to /home/rd."
 
         # Create the step tracking directory after the 'rd' user is created
-        sudo mkdir -p "$STEP_DIR"
-        sudo chown rd:rd "$STEP_DIR"
+        ensure_step_dir
     else
         echo "User 'rd' already exists. Skipping..."
     fi
@@ -89,12 +99,14 @@ create_rd_user() {
 
 # Install tasksel if not already installed
 install_tasksel() {
+    step_completed install_tasksel || return 0
     echo "Installing tasksel..."
     sudo apt install tasksel -y
 }
 
 # Install MATE Desktop using tasksel as root
 install_mate() {
+    step_completed install_mate || return 0
     echo "Installing MATE Desktop..."
     echo "MATE Desktop must be installed as root. Please enter the root password when prompted."
     su -c "tasksel"
@@ -102,12 +114,14 @@ install_mate() {
 
 # Install xRDP
 install_xrdp() {
+    step_completed install_xrdp || return 0
     echo "Installing xRDP..."
     sudo apt install xrdp dbus-x11 -y
 }
 
 # Configure xRDP to use MATE
 configure_xrdp() {
+    step_completed configure_xrdp || return 0
     echo "Configuring xRDP to use MATE..."
     echo "mate-session" | sudo tee /home/rd/.xsession > /dev/null
     sudo chown rd:rd /home/rd/.xsession  # Ensure rd owns the file
@@ -116,6 +130,7 @@ configure_xrdp() {
 
 # Set MATE as the default session manager
 set_mate_default() {
+    step_completed set_mate_default || return 0
     echo "Setting MATE as the default session manager..."
     sudo update-alternatives --config x-session-manager <<< '2'  # Select MATE
     sudo update-alternatives --config x-session-manager <<< '0'  # Set to auto mode
@@ -123,24 +138,14 @@ set_mate_default() {
 
 # Fix QT5 XCB error
 fix_qt5() {
+    step_completed fix_qt5 || return 0
     echo "Fixing QT5 XCB error..."
     sudo ln -s /home/rd/.Xauthority /root/.Xauthority
 }
 
-# Ensure the script is running as the 'rd' user before installing Rivendell
-ensure_rd_user
-
-# Prompt user to reboot before installing Rivendell
-if [ ! -f "$STEP_DIR/reboot_before_rivendell" ]; then
-    echo "A newer kernel is available. You must reboot to load the new kernel before continuing."
-    confirm "Would you like to reboot now?"
-    echo "Rebooting system..."
-    touch "$STEP_DIR/reboot_before_rivendell"
-    sudo reboot
-fi
-
 # Install Rivendell
 install_rivendell() {
+    step_completed install_rivendell || return 0
     echo "Installing Rivendell..."
     wget https://software.paravelsystems.com/ubuntu/dists/jammy/main/install_rivendell.sh || return 1
     chmod +x install_rivendell.sh || return 1
@@ -149,12 +154,14 @@ install_rivendell() {
 
 # Install broadcasting tools (Icecast, JACK, Liquidsoap, VLC)
 install_broadcasting_tools() {
+    step_completed install_broadcasting_tools || return 0
     echo "Installing broadcasting tools..."
     sudo apt install -y icecast2 jackd2 qjackctl liquidsoap vlc vlc-plugin-jack gnome-system-monitor
 }
 
 # Configure Icecast
 configure_icecast() {
+    step_completed configure_icecast || return 0
     echo "Configuring Icecast..."
     sudo cp /etc/icecast2/icecast.xml /etc/icecast2/icecast.xml-backup
 
@@ -182,6 +189,7 @@ EOL
 
 # Enable and start Icecast (without blocking the script)
 enable_icecast() {
+    step_completed enable_icecast || return 0
     echo "Enabling and starting Icecast..."
     sudo systemctl daemon-reload
     sudo systemctl enable icecast2
@@ -191,6 +199,7 @@ enable_icecast() {
 
 # Disable PulseAudio and configure audio
 disable_pulseaudio() {
+    step_completed disable_pulseaudio || return 0
     echo "Disabling PulseAudio..."
     sudo killall pulseaudio || true
     sudo sed -i 's/# autospawn = yes/autospawn = no/' /etc/pulse/client.conf
@@ -204,6 +213,7 @@ EOL
 
 # Create directories as 'rd' user
 create_directories() {
+    step_completed create_directories || return 0
     echo "Creating directories..."
     mkdir -p /home/rd/imports /home/rd/logs
     chown rd:rd /home/rd/imports /home/rd/logs
@@ -211,12 +221,14 @@ create_directories() {
 
 # Download APPS folder as 'rd' user
 download_apps() {
+    step_completed download_apps || return 0
     echo "Downloading APPS folder..."
     git clone https://github.com/anjeleno/Rivendell-Cloud.git /home/rd/Rivendell-Cloud
 }
 
 # Move APPS folder and set permissions as 'rd' user
 move_apps() {
+    step_completed move_apps || return 0
     echo "Moving APPS folder and setting permissions..."
     APPS_SRC="/home/rd/Rivendell-Cloud/APPS"
     APPS_DEST="/home/rd/imports/APPS"
@@ -227,6 +239,7 @@ move_apps() {
 
 # Move desktop shortcuts as 'rd' user
 move_shortcuts() {
+    step_completed move_shortcuts || return 0
     echo "Moving desktop shortcuts..."
     DESKTOP_SHORTCUTS="$APPS_DEST/Shortcuts"
     USER_DESKTOP="/home/rd/Desktop"
@@ -250,6 +263,7 @@ move_shortcuts() {
 
 # Extract MySQL password from rd.conf
 extract_mysql_password() {
+    step_completed extract_mysql_password || return 0
     echo "Extracting MySQL password from /etc/rd.conf..."
     MYSQL_PASSWORD=$(grep -oP '(?<=Password=).*' /etc/rd.conf)
     echo "Using extracted MySQL password."
@@ -257,12 +271,14 @@ extract_mysql_password() {
 
 # Inject MySQL password into backup script
 update_backup_script() {
+    step_completed update_backup_script || return 0
     echo "Updating daily_db_backup.sh with MySQL password..."
     sed -i "s|Password=.*|Password=$MYSQL_PASSWORD|" "$APPS_DEST/.sql/daily_db_backup.sh"
 }
 
 # Configure cron jobs
 configure_cron() {
+    step_completed configure_cron || return 0
     echo "Configuring cron jobs..."
     (crontab -l 2>/dev/null; echo "05 00 * * * /home/rd/imports/APPS/.sql/daily_db_backup.sh >> /home/rd/imports/APPS/.sql/cron_execution.log 2>&1") | crontab -
     (crontab -l 2>/dev/null; echo "15 00 * * * /home/rd/imports/APPS/autologgen.sh") | crontab -
@@ -270,6 +286,7 @@ configure_cron() {
 
 # Enable firewall
 enable_firewall() {
+    step_completed enable_firewall || return 0
     echo "Configuring firewall..."
     sudo apt install -y ufw
 
@@ -293,6 +310,7 @@ enable_firewall() {
 
 # Harden SSH access
 harden_ssh() {
+    step_completed harden_ssh || return 0
     echo "Hardening SSH access..."
     echo "WARNING: This will disable password authentication and allow only SSH key-based login."
     echo "Ensure you have added your SSH public key to ~/.ssh/authorized_keys and confirmed you can log in with it."
@@ -315,35 +333,40 @@ harden_ssh() {
 
 # Prompt user to reboot
 final_reboot() {
+    step_completed final_reboot || return 0
     confirm "Would you like to reboot now to apply changes?"
     echo "Rebooting system..."
     sudo reboot
 }
 
 # Main script execution
+ensure_step_dir
 system_update
 hostname_timezone
 create_rd_user
+install_tasksel
+install_mate
+install_xrdp
+configure_xrdp
+set_mate_default
+fix_qt5
 
-# Now that the 'rd' user and STEP_DIR exist, enable step tracking for the rest of the script
-if ! step_completed install_tasksel; then install_tasksel; fi
-if ! step_completed install_mate; then install_mate; fi
-if ! step_completed install_xrdp; then install_xrdp; fi
-if ! step_completed configure_xrdp; then configure_xrdp; fi
-if ! step_completed set_mate_default; then set_mate_default; fi
-if ! step_completed fix_qt5; then fix_qt5; fi
-if ! step_completed install_rivendell; then install_rivendell; fi
-if ! step_completed install_broadcasting_tools; then install_broadcasting_tools; fi
-if ! step_completed configure_icecast; then configure_icecast; fi
-if ! step_completed enable_icecast; then enable_icecast; fi
-if ! step_completed disable_pulseaudio; then disable_pulseaudio; fi
-if ! step_completed create_directories; then create_directories; fi
-if ! step_completed download_apps; then download_apps; fi
-if ! step_completed move_apps; then move_apps; fi
-if ! step_completed move_shortcuts; then move_shortcuts; fi
-if ! step_completed extract_mysql_password; then extract_mysql_password; fi
-if ! step_completed update_backup_script; then update_backup_script; fi
-if ! step_completed configure_cron; then configure_cron; fi
-if ! step_completed enable_firewall; then enable_firewall; fi
-if ! step_completed harden_ssh; then harden_ssh; fi
-if ! step_completed final_reboot; then final_reboot; fi
+# Ensure the script is running as the 'rd' user before installing Rivendell
+ensure_rd_user
+
+# Install Rivendell and broadcasting tools
+install_rivendell
+install_broadcasting_tools
+configure_icecast
+enable_icecast
+disable_pulseaudio
+create_directories
+download_apps
+move_apps
+move_shortcuts
+extract_mysql_password
+update_backup_script
+configure_cron
+enable_firewall
+harden_ssh
+final_reboot
