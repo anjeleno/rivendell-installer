@@ -69,6 +69,10 @@ create_rd_user() {
         sudo adduser --disabled-password --gecos "rd,Rivendell Audio,,," --home /home/rd rd
         sudo usermod -aG sudo rd  # Add rd to sudo group
 
+        # Set a password for the 'rd' user
+        echo "Please set a password for the 'rd' user:"
+        sudo passwd rd
+
         # Ensure the home directory is owned by 'rd' and has correct permissions
         sudo chown -R rd:rd /home/rd
         sudo chmod 755 /home/rd
