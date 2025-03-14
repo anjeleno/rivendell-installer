@@ -1,9 +1,10 @@
 #!/bin/bash
-# Rivendell Auto-Install Script
-# Version: 0.14
+# Version: 0.15
 # Date: 2025-03-13
 # Description: Automated installation script for Rivendell on Ubuntu.
-# Changes in v0.14:
+# Changes in v0.15:
+# - Added interactive terminal check to ensure proper environment for prompts.
+# - Set locale to UTF-8 to prevent display issues.
 # - Fixed log file creation to use a temporary file before moving it to `/home/rd`.
 # - Restored interactive timezone configuration.
 # - Escaped `$` characters in Icecast passwords.
@@ -11,6 +12,18 @@
 # - Renamed `Desktop Shortcuts` to `Shortcuts`.
 # - Added a note to log in via RDP before moving shortcuts.
 # - Ensured the `rd` user is created with a password prompt and correct permissions.
+
+set -e  # Exit on error
+
+# Ensure the script is running in an interactive terminal
+if ! tty -s; then
+    echo "This script must be run in an interactive terminal."
+    exit 1
+fi
+
+# Set locale to UTF-8
+export LC_ALL=C.UTF-8
+export LANG=C.UTF-8
 
 set -e  # Exit on error
 
