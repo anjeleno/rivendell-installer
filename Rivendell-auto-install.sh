@@ -1,6 +1,6 @@
 #!/bin/bash
 # Rivendell Auto-Install Script
-# Version: 0.17.1
+# Version: 0.17.2
 # Date: 2025-03-14
 # Author: Your Name
 # Description: This script automates the installation and configuration of Rivendell,
@@ -363,10 +363,10 @@ final_reboot() {
 }
 
 # Main script execution
-ensure_step_dir
+create_rd_user  # Ensure the 'rd' user is created first
+ensure_step_dir  # Now we can safely create the step directory
 system_update
 hostname_timezone
-create_rd_user  # Ensure the 'rd' user is created before any steps that depend on it
 install_tasksel
 install_mate
 install_xrdp  # Reboot happens here after installing xRDP
