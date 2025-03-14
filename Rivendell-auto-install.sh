@@ -164,10 +164,10 @@ configure_icecast() {
 
     sudo tee -a /etc/icecast2/icecast.xml <<EOL
 <authentication>
-    <source-password>hackme$</source-password>
-    <relay-password>hackme$$</relay-password>
+    <source-password>hackm3</source-password>
+    <relay-password>hackm33</relay-password>
     <admin-user>admin</admin-user>
-    <admin-password>Hackme$$$</admin-password>
+    <admin-password>Hackm333</admin-password>
 </authentication>
 
 <listen-socket>
