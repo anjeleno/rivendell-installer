@@ -1,5 +1,25 @@
 #!/bin/bash
+# Rivendell Auto-Install Script
+# Version: 0.17.1
+# Date: 2025-03-14
+# Author: Your Name
+# Description: This script automates the installation and configuration of Rivendell,
+#              MATE Desktop, xRDP, and related broadcasting tools on Ubuntu.
+#              It includes step tracking to allow resuming after reboots and
+#              handles mid-script reboots gracefully.
+# Usage: Run as your default user. Ensure you have sudo privileges.
+#        After a reboot, rerun the script as the 'rd' user to resume installation.
+#        cd Rivendell-Cloud
+#        chmod +x Rivendell-auto-install.sh
+#        sudo ./Rivendell-auto-install.sh
+#        Reboot when prompted
+#        cd Rivendell-Cloud
+#        su rd (enter the password you set)
+#        ./Rivendell-auto-install.sh
+#        Enter the password you set for rd if prompted
+
 set -e  # Exit on error
+set -x  # Enable debugging
 
 # Persistent step tracking directory
 STEP_DIR="/home/rd/rivendell_install_steps"
@@ -17,8 +37,10 @@ step_completed() {
         echo "Step '$step_name' already completed. Skipping..."
         return 0
     else
-        # Run the step and only mark it as completed if it succeeds
-        if "$@"; then
+        echo "Running step '$step_name'..."
+        # Execute the step (passed as arguments to the function)
+        if "${@:2}"; then
+            # Mark the step as completed if it succeeds
             touch "$STEP_DIR/$step_name"
             return 0
         else
@@ -28,15 +50,15 @@ step_completed() {
     fi
 }
 
-# Function to ensure the script is running as the 'rd' user
-ensure_rd_user() {
-    if [ "$(whoami)" != "rd" ]; then
-        echo "The script must be run as the 'rd' user. Please switch to the 'rd' user and rerun the script."
-        echo "To switch to the 'rd' user, run:"
-        echo "  su rd"
-        echo "Then rerun the script."
-        exit 1
-    fi
+# Function to handle mid-script reboots
+mid_script_reboot() {
+    local step_name="$1"
+    echo "Marking step '$step_name' as completed..."
+    touch "$STEP_DIR/$step_name"
+    echo "A reboot is required to proceed. Please reboot the system and rerun the script as the 'rd' user."
+    confirm "Reboot now?"
+    echo "Rebooting system..."
+    sudo reboot
 }
 
 # Ensure the step tracking directory exists and is owned by 'rd'
@@ -45,30 +67,6 @@ ensure_step_dir() {
         sudo mkdir -p "$STEP_DIR"
         sudo chown rd:rd "$STEP_DIR"
     fi
-}
-
-# Update and upgrade the system
-system_update() {
-    step_completed system_update || return 0
-    echo "Updating system..."
-    sudo apt update && sudo apt dist-upgrade -y
-}
-
-# Set hostname and timezone
-hostname_timezone() {
-    step_completed hostname_timezone || return 0
-    echo "Setting hostname and timezone..."
-
-    # Set hostname
-    sudo hostnamectl set-hostname onair
-    sudo sed -i "/127.0.1.1/c\127.0.1.1\tonair" /etc/hosts
-
-    # Interactive timezone selection
-    echo "Please select your timezone:"
-    sudo dpkg-reconfigure tzdata
-
-    # Enable NTP
-    sudo timedatectl set-ntp yes
 }
 
 # Create 'rd' user and add to sudo group
@@ -97,6 +95,30 @@ create_rd_user() {
     fi
 }
 
+# Update and upgrade the system
+system_update() {
+    step_completed system_update || return 0
+    echo "Updating system..."
+    sudo apt update && sudo apt dist-upgrade -y
+}
+
+# Set hostname and timezone
+hostname_timezone() {
+    step_completed hostname_timezone || return 0
+    echo "Setting hostname and timezone..."
+
+    # Set hostname
+    sudo hostnamectl set-hostname onair
+    sudo sed -i "/127.0.1.1/c\127.0.1.1\tonair" /etc/hosts
+
+    # Interactive timezone selection
+    echo "Please select your timezone:"
+    sudo dpkg-reconfigure tzdata
+
+    # Enable NTP
+    sudo timedatectl set-ntp yes
+}
+
 # Install tasksel if not already installed
 install_tasksel() {
     step_completed install_tasksel || return 0
@@ -117,6 +139,7 @@ install_xrdp() {
     step_completed install_xrdp || return 0
     echo "Installing xRDP..."
     sudo apt install xrdp dbus-x11 -y
+    mid_script_reboot install_xrdp
 }
 
 # Configure xRDP to use MATE
@@ -346,13 +369,19 @@ hostname_timezone
 create_rd_user  # Ensure the 'rd' user is created before any steps that depend on it
 install_tasksel
 install_mate
-install_xrdp
+install_xrdp  # Reboot happens here after installing xRDP
 configure_xrdp
 set_mate_default
 fix_qt5
 
 # Ensure the script is running as the 'rd' user before installing Rivendell
-ensure_rd_user
+if [ "$(whoami)" != "rd" ]; then
+    echo "Please switch to the 'rd' user and rerun the script to continue installation."
+    echo "To switch to the 'rd' user, run:"
+    echo "  su rd"
+    echo "Then rerun the script."
+    exit 1
+fi
 
 # Install Rivendell and broadcasting tools
 install_rivendell

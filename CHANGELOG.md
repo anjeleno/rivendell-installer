@@ -1,5 +1,17 @@
 # Changelog
 
+# v0.17.1 (2025-03-14)
+#   - Added mid-script reboot handling to allow reboots after installing MATE Desktop and xRDP.
+#   - Introduced the `mid_script_reboot` function to mark steps as completed and prompt for a reboot.
+#   - Updated step tracking to ensure the script can resume after reboots.
+#   - Improved robustness by checking for existing installations (e.g., MATE Desktop).
+#   - Added debugging output for easier troubleshooting.
+#   - Updated documentation and comments for clarity.
+#
+# v0.17 (2025-03-14)
+#   - Fix step tracking and basic installation flow.
+#   - Troubleshoot logic
+
 ## v0.16 - 2025-03-13
 ### Changes:
 - **# - Fixed interactive prompts breaking by replacing global log redirection with selective logging.
