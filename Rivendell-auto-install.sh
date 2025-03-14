@@ -31,10 +31,30 @@ set -e  # Exit on error
 TEMP_LOG_FILE="/tmp/rivendell_install.log"
 LOG_FILE="/home/rd/rivendell_install.log"
 
-# Redirect all output to the temporary log file and the terminal
-exec > >(tee -a "$TEMP_LOG_FILE") 2>&1
+# Function to log non-interactive output
+log() {
+    echo "$@" | tee -a "$TEMP_LOG_FILE"
+}
 
-echo "Starting Rivendell installation. Logging to $TEMP_LOG_FILE..."
+# Redirect non-interactive output to the log file
+exec 3>&1  # Save the original stdout (terminal)
+exec 4>&2  # Save the original stderr (terminal)
+exec 1> >(tee -a "$TEMP_LOG_FILE")  # Redirect stdout to log file and terminal
+exec 2> >(tee -a "$TEMP_LOG_FILE" >&2)  # Redirect stderr to log file and terminal
+
+# Example usage of the log function
+log "Starting Rivendell installation. Logging to $TEMP_LOG_FILE..."
+
+# Interactive timezone selection (will not be logged)
+echo "Please select your timezone:"
+sudo dpkg-reconfigure tzdata
+
+# Log non-interactive output
+log "Timezone configuration complete."
+
+# Move the log file to /home/rd after creating the 'rd' user
+sudo mv "$TEMP_LOG_FILE" "$LOG_FILE"
+sudo chown rd:rd "$LOG_FILE"
 
 # Persistent step tracking directory
 STEP_DIR="/home/rd/rivendell_install_steps"
