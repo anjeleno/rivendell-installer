@@ -100,6 +100,19 @@ install_mate() {
     su -c "tasksel"
 }
 
+# After installing MATE, fall back to the current user (not necessarily rd)
+if ! step_completed "switch_to_current_user"; then
+    echo "MATE Desktop installation complete. Falling back to the current user: $(whoami)."
+    echo "Please log in as the 'rd' user to continue the installation."
+    echo "To switch to the 'rd' user, run:"
+    echo "  su rd"
+    echo "Then rerun the script."
+    exit 0
+fi
+
+# Ensure the script is running as the 'rd' user before proceeding
+ensure_rd_user
+
 # Install xRDP
 install_xrdp() {
     echo "Installing xRDP..."
@@ -120,6 +133,17 @@ set_mate_default() {
     sudo update-alternatives --config x-session-manager <<< '2'  # Select MATE
     sudo update-alternatives --config x-session-manager <<< '0'  # Set to auto mode
 }
+
+# Prompt user to reboot before continuing
+if ! step_completed "reboot_before_rivendell"; then
+    echo "A newer kernel is available. You must reboot to load the new kernel before continuing."
+    confirm "Would you like to reboot now?"
+    echo "Rebooting system..."
+    sudo reboot
+fi
+
+# Ensure the script is running as the 'rd' user before installing Rivendell
+ensure_rd_user
 
 # Install Rivendell
 install_rivendell() {
@@ -146,10 +170,10 @@ configure_icecast() {
 
     sudo tee -a /etc/icecast2/icecast.xml <<EOL
 <authentication>
-    <source-password>hackme$</source-password>
-    <relay-password>hackme$$</relay-password>
+    <source-password>hackm3</source-password>
+    <relay-password>hackm33</relay-password>
     <admin-user>admin</admin-user>
-    <admin-password>Hackme$$$</admin-password>
+    <admin-password>Hackm333</admin-password>
 </authentication>
 
 <listen-socket>
