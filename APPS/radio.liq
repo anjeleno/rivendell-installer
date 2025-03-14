@@ -14,7 +14,7 @@ set("frame.audio.samplerate",48000)
 radio = mksafe(input.jack(id="liquidsoap"))
 
 
-output.icecast(%mp3(bitrate=192), host = "localhost", port = 8000, password = "hackme$",
+output.icecast(%mp3(bitrate=192), host = "localhost", port = 8000, password = "hackm3",
 mount = "/192", genre = "Electronic", url = "192",
 name = ":: Station Name :: Your Slogan ::", description = "",
 format = "audio/mpeg", icy_metadata = "true", radio)

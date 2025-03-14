@@ -343,7 +343,7 @@ final_reboot() {
 ensure_step_dir
 system_update
 hostname_timezone
-create_rd_user
+create_rd_user  # Ensure the 'rd' user is created before any steps that depend on it
 install_tasksel
 install_mate
 install_xrdp
