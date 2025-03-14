@@ -100,19 +100,6 @@ install_mate() {
     su -c "tasksel"
 }
 
-# After installing MATE, fall back to the current user (not necessarily rd)
-if ! step_completed "switch_to_current_user"; then
-    echo "MATE Desktop installation complete. Falling back to the current user: $(whoami)."
-    echo "Please log in as the 'rd' user to continue the installation."
-    echo "To switch to the 'rd' user, run:"
-    echo "  su rd"
-    echo "Then rerun the script."
-    exit 0
-fi
-
-# Ensure the script is running as the 'rd' user before proceeding
-ensure_rd_user
-
 # Install xRDP
 install_xrdp() {
     echo "Installing xRDP..."
@@ -132,6 +119,12 @@ set_mate_default() {
     echo "Setting MATE as the default session manager..."
     sudo update-alternatives --config x-session-manager <<< '2'  # Select MATE
     sudo update-alternatives --config x-session-manager <<< '0'  # Set to auto mode
+}
+
+# Fix QT5 XCB error
+fix_qt5() {
+    echo "Fixing QT5 XCB error..."
+    sudo ln -s /home/rd/.Xauthority /root/.Xauthority
 }
 
 # Prompt user to reboot before continuing
@@ -170,10 +163,10 @@ configure_icecast() {
 
     sudo tee -a /etc/icecast2/icecast.xml <<EOL
 <authentication>
-    <source-password>hackm3</source-password>
-    <relay-password>hackm33</relay-password>
+    <source-password>hackme$</source-password>
+    <relay-password>hackme$$</relay-password>
     <admin-user>admin</admin-user>
-    <admin-password>Hackm333</admin-password>
+    <admin-password>Hackme$$$</admin-password>
 </authentication>
 
 <listen-socket>
@@ -252,12 +245,6 @@ move_shortcuts() {
         echo "Error: $DESKTOP_SHORTCUTS does not exist. Check if the APPS folder was downloaded correctly."
         exit 1
     fi
-}
-
-# Fix QT5 XCB error
-fix_qt5() {
-    echo "Fixing QT5 XCB error..."
-    sudo ln -s /home/rd/.Xauthority /root/.Xauthority
 }
 
 # Extract MySQL password from rd.conf
@@ -341,6 +328,7 @@ if ! step_completed install_mate; then install_mate; fi
 if ! step_completed install_xrdp; then install_xrdp; fi
 if ! step_completed configure_xrdp; then configure_xrdp; fi
 if ! step_completed set_mate_default; then set_mate_default; fi
+if ! step_completed fix_qt5; then fix_qt5; fi
 if ! step_completed install_rivendell; then install_rivendell; fi
 if ! step_completed install_broadcasting_tools; then install_broadcasting_tools; fi
 if ! step_completed configure_icecast; then configure_icecast; fi
@@ -350,7 +338,6 @@ if ! step_completed create_directories; then create_directories; fi
 if ! step_completed download_apps; then download_apps; fi
 if ! step_completed move_apps; then move_apps; fi
 if ! step_completed move_shortcuts; then move_shortcuts; fi
-if ! step_completed fix_qt5; then fix_qt5; fi
 if ! step_completed extract_mysql_password; then extract_mysql_password; fi
 if ! step_completed update_backup_script; then update_backup_script; fi
 if ! step_completed configure_cron; then configure_cron; fi
