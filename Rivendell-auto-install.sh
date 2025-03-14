@@ -1,6 +1,6 @@
 #!/bin/bash
 # Rivendell Auto-Install Script
-# Version: 0.17.2
+# Version: 0.17.3
 # Date: 2025-03-14
 # Author: Your Name
 # Description: This script automates the installation and configuration of Rivendell,
@@ -9,6 +9,7 @@
 #              handles mid-script reboots gracefully.
 # Usage: Run as your default user. Ensure you have sudo privileges.
 #        After a reboot, rerun the script as the 'rd' user to resume installation.
+#        
 #        cd Rivendell-Cloud
 #        chmod +x Rivendell-auto-install.sh
 #        sudo ./Rivendell-auto-install.sh
@@ -139,7 +140,6 @@ install_xrdp() {
     step_completed install_xrdp || return 0
     echo "Installing xRDP..."
     sudo apt install xrdp dbus-x11 -y
-    mid_script_reboot install_xrdp
 }
 
 # Configure xRDP to use MATE
@@ -157,6 +157,9 @@ set_mate_default() {
     echo "Setting MATE as the default session manager..."
     sudo update-alternatives --config x-session-manager <<< '2'  # Select MATE
     sudo update-alternatives --config x-session-manager <<< '0'  # Set to auto mode
+
+    # Reboot here to ensure MATE is fully configured before proceeding
+    mid_script_reboot set_mate_default
 }
 
 # Fix QT5 XCB error
@@ -369,10 +372,10 @@ system_update
 hostname_timezone
 install_tasksel
 install_mate
-install_xrdp  # Reboot happens here after installing xRDP
+install_xrdp
 configure_xrdp
-set_mate_default
-fix_qt5
+set_mate_default  # Reboot happens here after setting MATE as default
+fix_qt5  # QT5 fix happens after reboot
 
 # Ensure the script is running as the 'rd' user before installing Rivendell
 if [ "$(whoami)" != "rd" ]; then

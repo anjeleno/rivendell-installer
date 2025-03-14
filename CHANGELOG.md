@@ -1,4 +1,11 @@
 # Changelog
+# v0.17.3 (2025-03-14)
+- **Fixed**: Improved step tracking mechanism to ensure completed steps are respected after reboots.
+  - Added ownership checks for the step tracking directory (`/home/rd/rivendell_install_steps`) to ensure it is always owned by the `rd` user.
+  - Enhanced step completion checks to prevent re-execution of already completed steps (e.g., MATE Desktop installation).
+- **Improved**: Graceful handling of mid-script reboots to ensure the script resumes correctly.
+- **Updated**: Documentation and prompts for better user guidance during installation.
+- **Tested**: Verified on a fresh Ubuntu installation to ensure smooth execution after reboots.
 
 # v0.17.1 (2025-03-14)
 #   - Added mid-script reboot handling to allow reboots after installing MATE Desktop and xRDP.
