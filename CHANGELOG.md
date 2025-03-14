@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.16 - 2025-03-13
+### Changes:
+- **# - Fixed interactive prompts breaking by replacing global log redirection with selective logging.
+- **# - Added a `log` function to log non-interactive output while preserving interactive prompts.
+- **# - Updated log file handling to ensure proper permissions and ownership.
+- ** # - Removed `exec > >(tee -a "$TEMP_LOG_FILE") 2>&1` to prevent interference with interactive prompts.
+
+
 ## v0.15 - 2025-03-13
 ### Changes:
 - **Interactive terminal check**: Added a check to ensure the script runs in an interactive terminal.
