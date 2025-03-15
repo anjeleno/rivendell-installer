@@ -1,12 +1,18 @@
 # Changelog
 #
+## v0.19.3 - 2025-03-15
+### Changes:
+- **Fixed issues with copying the working directory and configuring .bashrc.
+- **Ensured the script enforces the 'rd' user check after reboot.
+- **Added explicit error handling for critical steps.
+#
 ## v0.19.1 - 2025-03-15
 ### Changes:
-#   - Fixed duplicate function definitions.
-#   - Reordered steps to ensure 'rd' user is created before enforcing the 'rd' user check.
-#   - Moved 'hostname_timezone' to run only after reboot.
-#   - Prevented 'copy_working_directory' from running twice.
-#   - Updated version number in header.
+- **Fixed duplicate function definitions.
+- **Reordered steps to ensure 'rd' user is created before enforcing the 'rd' user check.
+- **Moved 'hostname_timezone' to run only after reboot.
+- **Prevented 'copy_working_directory' from running twice.
+- **Updated version number in header.
 #
 ## v0.19.0 - 2025-03-15
 ### Changes:
