@@ -1,5 +1,11 @@
 # Changelog
 #
+## v0.19.5 - 2025-03-15
+### Changes:
+- **Fixed issue where step tracking directory was created before the 'rd' user existed.
+- **Ensured working directory is copied after the 'rd' user is created.
+- **Improved flow and debugging output.
+#
 ## v0.19.3 - 2025-03-15
 ### Changes:
 - **Fixed issues with copying the working directory and configuring .bashrc.

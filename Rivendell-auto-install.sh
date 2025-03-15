@@ -1,6 +1,6 @@
 #!/bin/bash
 # Rivendell Auto-Install Script
-# Version: 0.19.4
+# Version: 0.19.5
 # Date: 2025-03-15
 # Author: Branjeleno
 # Git Repository: https://github.com/yourusername/Rivendell-Cloud
@@ -8,26 +8,25 @@
 #              MATE Desktop, xRDP, and related broadcasting tools optimized to run
 #              on Ubuntu 22.04 in a cloud VPS with an advanced custom configuration.
 #              It includes everything you need out-of-the-box to stream with liquidsoap,
-#              icecast, and Stere Tool and more.
+#              icecast, Stere Tool and more.
 #
 # Usage: Run as your default user. Ensure you have sudo privileges.
 #        After a reboot, rerun the script as the 'rd' user to resume installation.
 #        
 #        cd Rivendell-Cloud
-#        chmod +x Rivendell-auto-install-v0.19.4.sh
-#        sudo ./Rivendell-auto-install-v0.19.4.sh
+#        chmod +x Rivendell-auto-install-v0.19.5.sh
+#        sudo ./Rivendell-auto-install-v0.19.5.sh
 #        Reboot when prompted
 #        cd Rivendell-Cloud
 #        su rd (enter the password you set)
-#        ./Rivendell-auto-install-v0.19.4.sh
+#        ./Rivendell-auto-install-v0.19.5.sh
 #        Enter the password you set for rd if prompted
 
 # Changelog:
-# v0.19.4 - 2025-03-15
-#   - Fixed issues with copying the working directory and configuring .bashrc.
-#   - Ensured the script enforces the 'rd' user check after reboot.
-#   - Added explicit error handling and debugging output for critical steps.
-#   - Improved step tracking logic and flow verification.
+# v0.19.5 - 2025-03-15
+#   - Fixed issue where step tracking directory was created before the 'rd' user existed.
+#   - Ensured working directory is copied after the 'rd' user is created.
+#   - Improved flow and debugging output.
 
 set -e  # Exit on error
 set -x  # Enable debugging
