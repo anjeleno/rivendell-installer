@@ -1,6 +1,6 @@
 #!/bin/bash
 # Rivendell Auto-Install Script
-# Version: 0.19.3
+# Version: 0.19.4
 # Date: 2025-03-15
 # Author: Branjeleno
 # Git Repository: https://github.com/yourusername/Rivendell-Cloud
@@ -14,19 +14,20 @@
 #        After a reboot, rerun the script as the 'rd' user to resume installation.
 #        
 #        cd Rivendell-Cloud
-#        chmod +x Rivendell-auto-install-v0.19.2.sh
-#        sudo ./Rivendell-auto-install-v0.19.2.sh
+#        chmod +x Rivendell-auto-install-v0.19.4.sh
+#        sudo ./Rivendell-auto-install-v0.19.4.sh
 #        Reboot when prompted
 #        cd Rivendell-Cloud
 #        su rd (enter the password you set)
-#        ./Rivendell-auto-install-v0.19.2.sh
+#        ./Rivendell-auto-install-v0.19.4.sh
 #        Enter the password you set for rd if prompted
 
 # Changelog:
-# v0.19.3 - 2025-03-15
+# v0.19.4 - 2025-03-15
 #   - Fixed issues with copying the working directory and configuring .bashrc.
 #   - Ensured the script enforces the 'rd' user check after reboot.
-#   - Added explicit error handling for critical steps.
+#   - Added explicit error handling and debugging output for critical steps.
+#   - Improved step tracking logic and flow verification.
 
 set -e  # Exit on error
 set -x  # Enable debugging
@@ -43,12 +44,15 @@ confirm() {
 # Function to check if a step has already been completed
 step_completed() {
     local step_name="$1"
+    echo "Checking if step '$step_name' is completed..."
+    
     if [ -f "$STEP_DIR/$step_name" ]; then
         echo "Step '$step_name' already completed. Skipping..."
         return 0
     else
-        # Run the step and only mark it as completed if it succeeds
+        echo "Step '$step_name' not completed. Running step..."
         if "$@"; then
+            echo "Step '$step_name' succeeded. Marking as completed."
             touch "$STEP_DIR/$step_name"
             return 0
         else
@@ -97,23 +101,33 @@ create_rd_user() {
         sudo chmod 755 /home/rd
 
         echo "User 'rd' created. Skeleton files copied to /home/rd."
+
+        # Create the step tracking directory after the 'rd' user is created
+        sudo mkdir -p "$STEP_DIR"
+        sudo chown rd:rd "$STEP_DIR"
     else
         echo "User 'rd' already exists. Skipping..."
     fi
-
-    # Create the step tracking directory after the 'rd' user is created
-    sudo mkdir -p "$STEP_DIR"
-    sudo chown rd:rd "$STEP_DIR"
 }
 
 # Copy working directory to /home/rd/Rivendell-Cloud
 copy_working_directory() {
     echo "Copying working directory to /home/rd/Rivendell-Cloud..."
+    echo "Current working directory: $(pwd)"
+    echo "Destination directory: /home/rd/Rivendell-Cloud"
+
     if [ -d "/home/rd/Rivendell-Cloud" ]; then
         echo "Working directory already exists. Skipping copy."
     else
-        sudo cp -r "$(pwd)" /home/rd/Rivendell-Cloud
-        sudo chown -R rd:rd /home/rd/Rivendell-Cloud
+        echo "Copying $(pwd) to /home/rd/Rivendell-Cloud..."
+        sudo cp -r "$(pwd)" /home/rd/Rivendell-Cloud || {
+            echo "Error: Failed to copy working directory."
+            exit 1
+        }
+        sudo chown -R rd:rd /home/rd/Rivendell-Cloud || {
+            echo "Error: Failed to set permissions for /home/rd/Rivendell-Cloud."
+            exit 1
+        }
         echo "Working directory copied successfully."
     fi
 }
@@ -121,11 +135,20 @@ copy_working_directory() {
 # Configure .bashrc to auto-change directory on login
 configure_shell_profile() {
     echo "Configuring shell profile to auto-change directory on login..."
+    echo "Checking .bashrc for existing configuration..."
+
     if grep -q "cd /home/rd/Rivendell-Cloud" /home/rd/.bashrc; then
         echo "Shell profile already configured. Skipping..."
     else
-        echo "cd /home/rd/Rivendell-Cloud" | sudo tee -a /home/rd/.bashrc > /dev/null
-        sudo chown rd:rd /home/rd/.bashrc
+        echo "Adding 'cd /home/rd/Rivendell-Cloud' to .bashrc..."
+        echo "cd /home/rd/Rivendell-Cloud" | sudo tee -a /home/rd/.bashrc > /dev/null || {
+            echo "Error: Failed to modify .bashrc."
+            exit 1
+        }
+        sudo chown rd:rd /home/rd/.bashrc || {
+            echo "Error: Failed to set ownership of .bashrc."
+            exit 1
+        }
         echo "Shell profile configured."
     fi
 }
@@ -430,6 +453,7 @@ if ! step_completed move_shortcuts; then move_shortcuts; fi
 if ! step_completed fix_qt5; then fix_qt5; fi
 if ! step_completed extract_mysql_password; then extract_mysql_password; fi
 if ! step_completed update_backup_script; then update_backup_script; fi
+if ! step_completed drop_and_replace_tables; then drop_and_replace_tables; fi
 if ! step_completed configure_cron; then configure_cron; fi
 if ! step_completed enable_firewall; then enable_firewall; fi
 if ! step_completed harden_ssh; then harden_ssh; fi
