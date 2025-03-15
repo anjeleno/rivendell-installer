@@ -1,5 +1,9 @@
 # Changelog
 #
+## v0.19.7 - 2025-03-15
+### Changes:
+- **Fixing logic.
+#
 ## v0.19.6 - 2025-03-15
 ### Changes:
 - **Troubleshhoting (and hopefully fixing) logic.
