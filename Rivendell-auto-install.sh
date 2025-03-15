@@ -1,6 +1,6 @@
 #!/bin/bash
 # Rivendell Auto-Install Script
-# Version: 0.19.6
+# Version: 0.19.7
 # Date: 2025-03-15
 # Author: Branjeleno
 # Git Repository: https://github.com/yourusername/rivendell-Cloud
@@ -8,7 +8,7 @@
 #              MATE Desktop, xRDP, and related broadcasting tools optimized to run
 #              on Ubuntu 22.04 in a cloud VPS with an advanced custom configuration.
 #              It includes everything you need out-of-the-box to stream with liquidsoap,
-#              icecast, and Stere Tool and more.
+#              icecast, Stere Tool and more.
 #
 # Usage: Run as your default user. Ensure you have sudo privileges.
 #        After a reboot, rerun the script as the 'rd' user to resume installation.
@@ -23,7 +23,7 @@
 #        Enter the password you set for rd if prompted
 
 # Changelog:
-# v0.19.6 - 2025-03-15
+# v0.19.7 - 2025-03-15
 #   - Fixing logic
 
 set -e  # Exit on error
