@@ -1,5 +1,10 @@
 # Changelog
 #
+## v0.19.6 - 2025-03-15
+### Changes:
+- **Troubleshhoting (and hopefully fixing) logic.
+- **Renamed root directory and script (lowercase "R," because switching manually sucks lol)
+#
 ## v0.19.5 - 2025-03-15
 ### Changes:
 - **Fixed issue where step tracking directory was created before the 'rd' user existed.
