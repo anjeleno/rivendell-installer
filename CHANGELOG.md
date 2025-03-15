@@ -1,41 +1,55 @@
 # Changelog
-
+#
+# v0.19.0 - 2025-03-15
+- **Added backup and restore functionality for .bashrc.
+- **Improved SQL password handling for database operations.
+- **Updated Icecast configuration.
+- **Added error handling for SQL operations.
+- **Integrated optional privilege management for rduser.
+- **Improved readability and added comments for clarity.
+##
+# v0.18.0 - 2025-03-14
+- **Initial release of the script.
+- **Includes installation of Rivendell, MATE Desktop, xRDP, and broadcasting tools.
+- **Added step tracking to avoid re-running completed steps.
+- **Configured Icecast, Liquidsoap, and other broadcasting tools.
+#
 ## v0.18.0 - 2025-03-14
 ### Changes:
-- **# - Rebased on v0.12.x codebase with critical fixes
-- **# - Fixed Icecast configuration to use custom icecast.xml
-- **# - Added check to ensure Desktop directory exists before moving shortcuts
-- **# - Corrected MySQL password extraction and injection in backup script
-- **# - Resolved Icecast permissions issues
+- **RRebased on v0.12.x codebase with critical fixes
+- **RFixed Icecast configuration to use custom icecast.xml
+- **RAdded check to ensure Desktop directory exists before moving shortcuts
+- **RCorrected MySQL password extraction and injection in backup script
+- **RResolved Icecast permissions issues
 #
 ## v0.17.3 (2025-03-14)
 ### Changes:
 - **Fixed**: Improved step tracking mechanism to ensure completed steps are respected after reboots.
-- **# - Added ownership checks for the step tracking directory (`/home/rd/rivendell_install_steps`) to ensure it is always owned by the `rd` user.
-- **# - Enhanced step completion checks to prevent re-execution of already completed steps (e.g., MATE Desktop installation).
+- **RAdded ownership checks for the step tracking directory (`/home/rd/rivendell_install_steps`) to ensure it is always owned by the `rd` user.
+- **REnhanced step completion checks to prevent re-execution of already completed steps (e.g., MATE Desktop installation).
 - **Improved**: Graceful handling of mid-script reboots to ensure the script resumes correctly.
 - **Updated**: Documentation and prompts for better user guidance during installation.
 - **Tested**: Verified on a fresh Ubuntu installation to ensure smooth execution after reboots.
 
 ## v0.17.1 (2025-03-14)
 ### Changes:
-- **# - Added mid-script reboot handling to allow reboots after installing MATE Desktop and xRDP.
-- **# - Introduced the `mid_script_reboot` function to mark steps as completed and prompt for a reboot.
-- **# - pdated step tracking to ensure the script can resume after reboots.
-- **# - Improved robustness by checking for existing installations (e.g., MATE Desktop).
-- **# - Added debugging output for easier troubleshooting.
-- **# - Updated documentation and comments for clarity.
+- **RAdded mid-script reboot handling to allow reboots after installing MATE Desktop and xRDP.
+- **RIntroduced the `mid_script_reboot` function to mark steps as completed and prompt for a reboot.
+- **Rpdated step tracking to ensure the script can resume after reboots.
+- **RImproved robustness by checking for existing installations (e.g., MATE Desktop).
+- **RAdded debugging output for easier troubleshooting.
+- **RUpdated documentation and comments for clarity.
 #
 ## v0.17 (2025-03-14)
 ### Changes:
-- **# - Fix step tracking and basic installation flow.
-- **# - Troubleshoot logic
+- **RFix step tracking and basic installation flow.
+- **RTroubleshoot logic
 #
 ## v0.16 - 2025-03-13
 ### Changes:
-- **# - Fixed interactive prompts breaking by replacing global log redirection with selective logging.
-- **# - Added a `log` function to log non-interactive output while preserving interactive prompts.
-- **# - Updated log file handling to ensure proper permissions and ownership.
+- **RFixed interactive prompts breaking by replacing global log redirection with selective logging.
+- **RAdded a `log` function to log non-interactive output while preserving interactive prompts.
+- **RUpdated log file handling to ensure proper permissions and ownership.
 - ** # - Removed `exec > >(tee -a "$TEMP_LOG_FILE") 2>&1` to prevent interference with interactive prompts.
 
 

@@ -1,23 +1,23 @@
 #!/bin/bash
 # Rivendell Auto-Install Script
-# Version: 0.18.0
+# Version: 0.19.0
 # Date: 2025-03-15
 # Author: Branjeleno
 # Description: This script automates the installation and configuration of Rivendell,
 #              MATE Desktop, xRDP, and related broadcasting tools optimized to run
 #              on Ubuntu 22.04 in a cloud VPS. It includes everything you need
-#              out-of-the-box to stream liquidsoap, icecast and Stere Tool.
+#              out-of-the-box to stream liquidsoap, icecast, and Stere Tool.
 #
 # Usage: Run as your default user. Ensure you have sudo privileges.
 #        After a reboot, rerun the script as the 'rd' user to resume installation.
 #        
 #        cd Rivendell-Cloud
-#        chmod +x Rivendell-auto-install.sh
-#        sudo ./Rivendell-auto-install.sh
+#        chmod +x Rivendell-auto-install-v0.19.0.sh
+#        sudo ./Rivendell-auto-install-v0.19.0.sh
 #        Reboot when prompted
 #        cd Rivendell-Cloud
 #        su rd (enter the password you set)
-#        ./Rivendell-auto-install.sh
+#        ./Rivendell-auto-install-v0.19.0.sh
 #        Enter the password you set for rd if prompted
 
 set -e  # Exit on error
@@ -109,6 +109,60 @@ create_rd_user() {
     sudo chown rd:rd "$STEP_DIR"
 }
 
+# Copy working directory to /home/rd/Rivendell-Cloud
+copy_working_directory() {
+    echo "Copying working directory to /home/rd/Rivendell-Cloud..."
+    sudo cp -r "$(pwd)" /home/rd/Rivendell-Cloud
+    sudo chown -R rd:rd /home/rd/Rivendell-Cloud
+    echo "Working directory copied successfully."
+}
+
+# Configure .bashrc to auto-change directory on login
+configure_shell_profile() {
+    echo "Configuring shell profile to auto-change directory on login..."
+    echo "cd /home/rd/Rivendell-Cloud" | sudo tee -a /home/rd/.bashrc > /dev/null
+    sudo chown rd:rd /home/rd/.bashrc
+    echo "Shell profile configured."
+}
+
+# Clean up .bashrc after installation
+cleanup_bashrc() {
+    echo "Cleaning up .bashrc..."
+    sudo sed -i '/cd \/home\/rd\/Rivendell-Cloud/d' /home/rd/.bashrc
+    echo "Cleanup complete. .bashrc restored to its original state."
+}
+
+# Prompt user to reboot
+prompt_reboot() {
+    read -p "Would you like to reboot now? (y/n): " REBOOT_CHOICE
+    if [[ "$REBOOT_CHOICE" =~ ^[Yy]$ ]]; then
+        echo "Rebooting system..."
+        sudo reboot
+    else
+        echo "Please manually reboot and rerun the script as the 'rd' user."
+        exit 1
+    fi
+}
+
+# Main script execution
+if [ "$(whoami)" != "rd" ]; then
+    echo "ERROR: This script must be run as the 'rd' user."
+    echo "Please switch to the 'rd' user and reboot the system."
+    echo "To switch to the 'rd' user, run:"
+    echo "  su rd"
+    echo "Then reboot the system by running:"
+    echo "  sudo reboot"
+    echo "After rebooting, log in as the 'rd' user and rerun this script."
+
+    # Copy working directory and configure shell profile
+    copy_working_directory
+    configure_shell_profile
+
+    # Prompt for reboot
+    prompt_reboot
+    exit 1
+fi
+
 # Install tasksel if not already installed
 install_tasksel() {
     echo "Installing tasksel..."
@@ -118,7 +172,7 @@ install_tasksel() {
 # Install MATE Desktop using tasksel as root
 install_mate() {
     echo "Installing MATE Desktop..."
-    echo "MATE Desktop installing as root. On the next screen, use the arrouw keys and spacebar to select MATE, OK and enter to continue."
+    echo "MATE Desktop installing as root. On the next screen, use the arrow keys and spacebar to select MATE, OK and enter to continue."
     su -c "tasksel"
 }
 
@@ -157,19 +211,34 @@ install_broadcasting_tools() {
     sudo apt install -y icecast2 jackd2 qjackctl liquidsoap vlc vlc-plugin-jack
 }
 
+# Create pypad text file for now and next meta to web or external app
+touch_pypad() {
+    sudo touch /var/www/html/meta.txt
+    sudo chown pypad:pypad /var/www/html/meta.txt
+}
+
 # Replace default icecast.xml with custom icecast.xml
 configure_icecast() {
     echo "Configuring Icecast..."
-    sudo cp /home/rd/imports/APPS/icecast.xml /etc/icecast2/icecast.xml
-    sudo chown icecast2:icecast2 /etc/icecast2/icecast.xml
-    sudo chmod 640 /etc/icecast2/icecast.xml
 
-    # Fix Icecast permissions
-    echo "Fixing Icecast permissions..."
-    sudo chown -R icecast2:icecast2 /etc/icecast2
-    sudo chown -R icecast2:icecast2 /var/log/icecast2
+    # Backup the original icecast.xml
+    if [ -f /etc/icecast2/icecast.xml ]; then
+        sudo cp /etc/icecast2/icecast.xml /etc/icecast2/icecast.xml.bak
+        echo "Backed up original icecast.xml to /etc/icecast2/icecast.xml.bak"
+    fi
 
-    echo "Icecast configuration and permissions updated."
+    # Check if the custom icecast.xml exists
+    if [ -f /home/rd/imports/APPS/icecast.xml ]; then
+        sudo cp -f /home/rd/imports/APPS/icecast.xml /etc/icecast2/icecast.xml
+        sudo chown root:icecast /etc/icecast2/icecast.xml
+        sudo chmod 640 /etc/icecast2/icecast.xml
+        echo "Custom icecast.xml copied successfully."
+    else
+        echo "Error: /home/rd/imports/APPS/icecast.xml does not exist. Please check the file path."
+        exit 1
+    fi
+
+    echo "Icecast configuration updated."
 }
 
 enable_icecast() {
@@ -201,12 +270,6 @@ create_directories() {
     echo "Creating directories..."
     mkdir -p /home/rd/imports /home/rd/logs
     chown rd:rd /home/rd/imports /home/rd/logs
-}
-
-# Download APPS folder as 'rd' user
-download_apps() {
-    echo "Downloading APPS folder..."
-    git clone https://github.com/anjeleno/Rivendell-Cloud.git /home/rd/Rivendell-Cloud
 }
 
 # Move APPS folder and set permissions as 'rd' user
@@ -246,18 +309,105 @@ fix_qt5() {
     sudo ln -s /home/rd/.Xauthority /root/.Xauthority
 }
 
-# Extract MySQL password from rd.conf and inject into backup script
+# Extract MySQL password and store it in a global variable
 extract_mysql_password() {
     echo "Extracting MySQL password from /etc/rd.conf..."
-    MYSQL_PASSWORD=$(grep -oP '(?<=Password=)[^ ]+' /etc/rd.conf)
-    echo "Using extracted MySQL password: $MYSQL_PASSWORD"
+    MYSQL_PASSWORD=$(awk -F= '/\[mySQL\]/{flag=1;next}/\[/{flag=0}flag && /Password=/{print $2;exit}' /etc/rd.conf)
+    if [ -z "$MYSQL_PASSWORD" ]; then
+        echo "Error: Failed to extract MySQL password from /etc/rd.conf. Please check the file and ensure the [mySQL] section exists."
+        exit 1
+    else
+        echo "MySQL password extracted successfully: $MYSQL_PASSWORD"
+    fi
 }
 
+# Update backup script with MySQL password
 update_backup_script() {
     echo "Updating daily_db_backup.sh with MySQL password..."
-    sed -i "s|SQL_PASSWORD_GOES_HERE|${MYSQL_PASSWORD}|" "$APPS_DEST/.sql/daily_db_backup.sh"
-    sed -i 's/ -p /-p/' "$APPS_DEST/.sql/daily_db_backup.sh"  # Remove leading space between -p and the password
+    sed -i "s|SQL_PASSWORD_GOES_HERE|${MYSQL_PASSWORD}|" /home/rd/imports/APPS/.sql/daily_db_backup.sh
+    sed -i 's/ -p /-p/' /home/rd/imports/APPS/.sql/daily_db_backup.sh
+    echo "Backup script updated successfully."
 }
+
+extract_mysql_password() {
+    echo "Extracting MySQL password from /etc/rd.conf..."
+    MYSQL_PASSWORD=$(awk -F= '/\[mySQL\]/{flag=1;next}/\[/{flag=0}flag && /Password=/{print $2;exit}' /etc/rd.conf)
+    if [ -z "$MYSQL_PASSWORD" ]; then
+        echo "Error: Failed to extract MySQL password from /etc/rd.conf. Please check the file and ensure the [mySQL] section exists."
+        exit 1
+    else
+        echo "MySQL password extracted successfully: $MYSQL_PASSWORD"
+    fi
+}
+
+drop_and_replace_tables() {
+    echo "Dropping and replacing tables in the Rivendell database..."
+
+    # Drop existing tables
+    echo "Dropping existing tables..."
+    mysql -u rduser -p"$MYSQL_PASSWORD" Rivendell < /home/rd/imports/APPS/.sql/drop_tables.sql || {
+        echo "Error: Failed to drop tables. Please check the SQL file and database permissions."
+        exit 1
+    }
+
+    # Import custom SQL file
+    echo "Importing custom SQL file..."
+    mysql -u rduser -p"$MYSQL_PASSWORD" Rivendell < /home/rd/imports/APPS/.sql/RDDB_v430_Cloud.sql || {
+        echo "Error: Failed to import custom SQL file. Please check the SQL file and database permissions."
+        exit 1
+    }
+
+    echo "Database tables updated successfully."
+}
+
+drop_and_replace_tables() {
+    echo "Dropping and replacing tables in the Rivendell database..."
+
+    # Drop existing tables
+    echo "Dropping existing tables..."
+    mysql -u rduser -p"$MYSQL_PASSWORD" Rivendell < /home/rd/imports/APPS/.sql/drop_tables.sql || {
+        echo "Error: Failed to drop tables. Please check the SQL file and database permissions."
+        exit 1
+    }
+
+    # Import custom SQL file
+    echo "Importing custom SQL file..."
+    mysql -u rduser -p"$MYSQL_PASSWORD" Rivendell < /home/rd/imports/APPS/.sql/RDDB_v430_Cloud.sql || {
+        echo "Error: Failed to import custom SQL file. Please check the SQL file and database permissions."
+        exit 1
+    }
+
+    echo "Database tables updated successfully."
+}
+
+grant_privileges() {
+    echo "Granting additional privileges to rduser..."
+    mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "GRANT DROP, CREATE, INSERT, SELECT, DELETE, ALTER ON Rivendell.* TO 'rduser'@'localhost'; FLUSH PRIVILEGES;" || {
+        echo "Error: Failed to grant privileges. Please check the MySQL root password and permissions."
+        exit 1
+    }
+    echo "Privileges granted."
+}
+
+revoke_privileges() {
+    echo "Revoking additional privileges from rduser..."
+    mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "REVOKE DROP, CREATE, ALTER ON Rivendell.* FROM 'rduser'@'localhost'; FLUSH PRIVILEGES;" || {
+        echo "Error: Failed to revoke privileges. Please check the MySQL root password and permissions."
+        exit 1
+    }
+    echo "Privileges revoked."
+}
+
+# Main script execution
+extract_mysql_password
+
+# Drop and replace tables using rduser
+drop_and_replace_tables
+
+# If additional privileges are needed (only if rduser lacks permissions)
+# grant_privileges
+# drop_and_replace_tables
+# revoke_privileges
 
 # Configure cron jobs
 configure_cron() {
@@ -311,11 +461,11 @@ harden_ssh() {
     echo "SSH access has been hardened. Password authentication is now disabled."
 }
 
-# Prompt user to reboot
-final_reboot() {
-    confirm "Would you like to reboot now to apply changes?"
-    echo "Rebooting system..."
-    sudo reboot
+# Clean up .bashrc after installation
+cleanup_bashrc() {
+    echo "Cleaning up .bashrc..."
+    sudo sed -i '/cd \/home\/rd\/Rivendell-Cloud/d' /home/rd/.bashrc
+    echo "Cleanup complete. .bashrc restored to its original state."
 }
 
 # Main script execution
@@ -333,7 +483,6 @@ if ! step_completed configure_icecast; then configure_icecast; fi
 if ! step_completed enable_icecast; then enable_icecast; fi
 if ! step_completed disable_pulseaudio; then disable_pulseaudio; fi
 if ! step_completed create_directories; then create_directories; fi
-if ! step_completed download_apps; then download_apps; fi
 if ! step_completed move_apps; then move_apps; fi
 if ! step_completed move_shortcuts; then move_shortcuts; fi
 if ! step_completed fix_qt5; then fix_qt5; fi
@@ -342,4 +491,5 @@ if ! step_completed update_backup_script; then update_backup_script; fi
 if ! step_completed configure_cron; then configure_cron; fi
 if ! step_completed enable_firewall; then enable_firewall; fi
 if ! step_completed harden_ssh; then harden_ssh; fi
+if ! step_completed cleanup_bashrc; then cleanup_bashrc; fi
 if ! step_completed final_reboot; then final_reboot; fi
