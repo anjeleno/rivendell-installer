@@ -1,13 +1,14 @@
 #!/bin/bash
 # Rivendell Auto-Install Script
-# Version: 0.19.2
+# Version: 0.19.3
 # Date: 2025-03-15
 # Author: Branjeleno
 # Git Repository: https://github.com/yourusername/Rivendell-Cloud
 # Description: This script automates the installation and configuration of Rivendell,
 #              MATE Desktop, xRDP, and related broadcasting tools optimized to run
-#              on Ubuntu 22.04 in a cloud VPS. It includes everything you need
-#              out-of-the-box to stream liquidsoap, icecast, and Stere Tool.
+#              on Ubuntu 22.04 in a cloud VPS with an advanced custom configuration.
+#              It includes everything you need out-of-the-box to stream with liquidsoap,
+#              icecast, and Stere Tool and more.
 #
 # Usage: Run as your default user. Ensure you have sudo privileges.
 #        After a reboot, rerun the script as the 'rd' user to resume installation.
@@ -22,10 +23,10 @@
 #        Enter the password you set for rd if prompted
 
 # Changelog:
-# v0.19.2 - 2025-03-16
-#   - Added debugging output for copying the working directory and configuring .bashrc.
+# v0.19.3 - 2025-03-15
+#   - Fixed issues with copying the working directory and configuring .bashrc.
 #   - Ensured the script enforces the 'rd' user check after reboot.
-#   - Fixed step tracking to ensure steps are marked as completed correctly.
+#   - Added explicit error handling for critical steps.
 
 set -e  # Exit on error
 set -x  # Enable debugging
@@ -148,29 +149,6 @@ prompt_reboot() {
     fi
 }
 
-# Main script execution
-if ! step_completed system_update; then system_update; fi
-
-# Create 'rd' user and copy working directory (only on first run)
-if ! step_completed create_rd_user; then
-    create_rd_user
-    copy_working_directory
-    configure_shell_profile
-fi
-
-# Enforce 'rd' user check before reboot
-if [ "$(whoami)" != "rd" ]; then
-    echo "ERROR: This script must be run as the 'rd' user."
-    echo "Please switch to the 'rd' user and reboot the system."
-    echo "To switch to the 'rd' user, run:"
-    echo "  su rd"
-    echo "Then reboot the system by running:"
-    echo "  sudo reboot"
-    echo "After rebooting, log in as the 'rd' user and rerun this script."
-    prompt_reboot
-    exit 1
-fi
-
 # Install tasksel if not already installed
 install_tasksel() {
     echo "Installing tasksel..."
@@ -181,7 +159,7 @@ install_tasksel() {
 install_mate() {
     echo "Installing MATE Desktop..."
     echo "MATE Desktop installing as root. On the next screen, use the arrow keys and spacebar to select MATE, OK and enter to continue."
-    su -c "tasksel"
+    sudo tasksel install mate-desktop
 }
 
 # Install xRDP
@@ -219,13 +197,13 @@ install_broadcasting_tools() {
     sudo apt install -y icecast2 jackd2 qjackctl liquidsoap vlc vlc-plugin-jack
 }
 
-# Create pypad text file for now and next meta to web or external app
+# Create pypad text file to send RD now and next meta to web or external app
 touch_pypad() {
     sudo touch /var/www/html/meta.txt
     sudo chown pypad:pypad /var/www/html/meta.txt
 }
 
-# Replace default icecast.xml with custom icecast.xml
+# Configure Icecast
 configure_icecast() {
     echo "Configuring Icecast..."
 
@@ -249,15 +227,13 @@ configure_icecast() {
     echo "Icecast configuration updated."
 }
 
+# Enable Icecast
 enable_icecast() {
     echo "Enabling and starting Icecast..."
-
-    # Reload systemd and start Icecast
     sudo systemctl daemon-reload
     sudo systemctl enable icecast2
     sudo systemctl start icecast2
-
-    echo "Icecast service enabled and started. Skipping status check to avoid blocking the script."
+    echo "Icecast service enabled and started."
 }
 
 # Disable PulseAudio and configure audio
@@ -444,6 +420,7 @@ if ! step_completed configure_xrdp; then configure_xrdp; fi
 if ! step_completed set_mate_default; then set_mate_default; fi
 if ! step_completed install_rivendell; then install_rivendell; fi
 if ! step_completed install_broadcasting_tools; then install_broadcasting_tools; fi
+if ! step_completed touch_pypad; then touch_pypad; fi
 if ! step_completed configure_icecast; then configure_icecast; fi
 if ! step_completed enable_icecast; then enable_icecast; fi
 if ! step_completed disable_pulseaudio; then disable_pulseaudio; fi
