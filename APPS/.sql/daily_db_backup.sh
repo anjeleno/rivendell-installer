@@ -6,7 +6,7 @@ BACKUP_DIR="/home/rd/imports/APPS/.sql"
 BACKUP_PREFIX="NIGHTLY_BACKUP"
 
 # Create backup
-mysqldump -u rduser -pPassword= Rivendell | gzip > "${BACKUP_DIR}/${BACKUP_PREFIX}_$(date +%Y_%m_%d).sql.gz"
+mysqldump -u rduser -p SQL_PASSWORD_GOES_HERE Rivendell | gzip > "${BACKUP_DIR}/${BACKUP_PREFIX}_$(date +%Y_%m_%d).sql.gz"
 
 # Check if backup was successful
 if [ $? -eq 0 ]; then

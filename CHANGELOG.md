@@ -1,24 +1,36 @@
 # Changelog
-# v0.17.3 (2025-03-14)
+
+## v0.18.0 - 2025-03-14
+### Changes:
+- **# - Rebased on v0.12.x codebase with critical fixes
+- **# - Fixed Icecast configuration to use custom icecast.xml
+- **# - Added check to ensure Desktop directory exists before moving shortcuts
+- **# - Corrected MySQL password extraction and injection in backup script
+- **# - Resolved Icecast permissions issues
+#
+## v0.17.3 (2025-03-14)
+### Changes:
 - **Fixed**: Improved step tracking mechanism to ensure completed steps are respected after reboots.
-  - Added ownership checks for the step tracking directory (`/home/rd/rivendell_install_steps`) to ensure it is always owned by the `rd` user.
-  - Enhanced step completion checks to prevent re-execution of already completed steps (e.g., MATE Desktop installation).
+- **# - Added ownership checks for the step tracking directory (`/home/rd/rivendell_install_steps`) to ensure it is always owned by the `rd` user.
+- **# - Enhanced step completion checks to prevent re-execution of already completed steps (e.g., MATE Desktop installation).
 - **Improved**: Graceful handling of mid-script reboots to ensure the script resumes correctly.
 - **Updated**: Documentation and prompts for better user guidance during installation.
 - **Tested**: Verified on a fresh Ubuntu installation to ensure smooth execution after reboots.
 
-# v0.17.1 (2025-03-14)
-#   - Added mid-script reboot handling to allow reboots after installing MATE Desktop and xRDP.
-#   - Introduced the `mid_script_reboot` function to mark steps as completed and prompt for a reboot.
-#   - Updated step tracking to ensure the script can resume after reboots.
-#   - Improved robustness by checking for existing installations (e.g., MATE Desktop).
-#   - Added debugging output for easier troubleshooting.
-#   - Updated documentation and comments for clarity.
+## v0.17.1 (2025-03-14)
+### Changes:
+- **# - Added mid-script reboot handling to allow reboots after installing MATE Desktop and xRDP.
+- **# - Introduced the `mid_script_reboot` function to mark steps as completed and prompt for a reboot.
+- **# - pdated step tracking to ensure the script can resume after reboots.
+- **# - Improved robustness by checking for existing installations (e.g., MATE Desktop).
+- **# - Added debugging output for easier troubleshooting.
+- **# - Updated documentation and comments for clarity.
 #
-# v0.17 (2025-03-14)
-#   - Fix step tracking and basic installation flow.
-#   - Troubleshoot logic
-
+## v0.17 (2025-03-14)
+### Changes:
+- **# - Fix step tracking and basic installation flow.
+- **# - Troubleshoot logic
+#
 ## v0.16 - 2025-03-13
 ### Changes:
 - **# - Fixed interactive prompts breaking by replacing global log redirection with selective logging.
