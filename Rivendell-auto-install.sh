@@ -1,24 +1,34 @@
 #!/bin/bash
 # Rivendell Auto-Install Script
-# Version: 0.19.0
+# Version: 0.19.1
 # Date: 2025-03-15
 # Author: Branjeleno
+# Git Repository: https://github.com/yourusername/Rivendell-Cloud
 # Description: This script automates the installation and configuration of Rivendell,
 #              MATE Desktop, xRDP, and related broadcasting tools optimized to run
-#              on Ubuntu 22.04 in a cloud VPS. It includes everything you need
-#              out-of-the-box to stream liquidsoap, icecast, and Stere Tool.
+#              on Ubuntu 22.04 in a cloud VPS with an advanced custom configuration.
+#              It includes everything you need out-of-the-box to stream with liquidsoap,
+#              icecast, and Stere Tool and more.
 #
 # Usage: Run as your default user. Ensure you have sudo privileges.
 #        After a reboot, rerun the script as the 'rd' user to resume installation.
 #        
 #        cd Rivendell-Cloud
-#        chmod +x Rivendell-auto-install-v0.19.0.sh
-#        sudo ./Rivendell-auto-install-v0.19.0.sh
+#        chmod +x Rivendell-auto-install-v0.19.1.sh
+#        sudo ./Rivendell-auto-install-v0.19.1.sh
 #        Reboot when prompted
 #        cd Rivendell-Cloud
 #        su rd (enter the password you set)
-#        ./Rivendell-auto-install-v0.19.0.sh
+#        ./Rivendell-auto-install-v0.19.1.sh
 #        Enter the password you set for rd if prompted
+
+# Changelog:
+# v0.19.1 - 2025-03-15
+#   - Fixed duplicate function definitions.
+#   - Reordered steps to ensure 'rd' user is created before enforcing the 'rd' user check.
+#   - Moved 'hostname_timezone' to run only after reboot.
+#   - Prevented 'copy_working_directory' from running twice.
+#   - Updated version number in header.
 
 set -e  # Exit on error
 set -x  # Enable debugging
@@ -47,17 +57,6 @@ step_completed() {
             echo "Step '$step_name' failed. Please troubleshoot and rerun the script."
             exit 1
         fi
-    fi
-}
-
-# Function to ensure the script is running as the 'rd' user
-ensure_rd_user() {
-    if [ "$(whoami)" != "rd" ]; then
-        echo "The script must be run as the 'rd' user. Please switch to the 'rd' user and rerun the script."
-        echo "To switch to the 'rd' user, run:"
-        echo "  su rd"
-        echo "Then rerun the script."
-        exit 1
     fi
 }
 
@@ -143,25 +142,6 @@ prompt_reboot() {
         exit 1
     fi
 }
-
-# Main script execution
-if [ "$(whoami)" != "rd" ]; then
-    echo "ERROR: This script must be run as the 'rd' user."
-    echo "Please switch to the 'rd' user and reboot the system."
-    echo "To switch to the 'rd' user, run:"
-    echo "  su rd"
-    echo "Then reboot the system by running:"
-    echo "  sudo reboot"
-    echo "After rebooting, log in as the 'rd' user and rerun this script."
-
-    # Copy working directory and configure shell profile
-    copy_working_directory
-    configure_shell_profile
-
-    # Prompt for reboot
-    prompt_reboot
-    exit 1
-fi
 
 # Install tasksel if not already installed
 install_tasksel() {
@@ -329,17 +309,7 @@ update_backup_script() {
     echo "Backup script updated successfully."
 }
 
-extract_mysql_password() {
-    echo "Extracting MySQL password from /etc/rd.conf..."
-    MYSQL_PASSWORD=$(awk -F= '/\[mySQL\]/{flag=1;next}/\[/{flag=0}flag && /Password=/{print $2;exit}' /etc/rd.conf)
-    if [ -z "$MYSQL_PASSWORD" ]; then
-        echo "Error: Failed to extract MySQL password from /etc/rd.conf. Please check the file and ensure the [mySQL] section exists."
-        exit 1
-    else
-        echo "MySQL password extracted successfully: $MYSQL_PASSWORD"
-    fi
-}
-
+# Drop and replace tables in the Rivendell database
 drop_and_replace_tables() {
     echo "Dropping and replacing tables in the Rivendell database..."
 
@@ -359,55 +329,6 @@ drop_and_replace_tables() {
 
     echo "Database tables updated successfully."
 }
-
-drop_and_replace_tables() {
-    echo "Dropping and replacing tables in the Rivendell database..."
-
-    # Drop existing tables
-    echo "Dropping existing tables..."
-    mysql -u rduser -p"$MYSQL_PASSWORD" Rivendell < /home/rd/imports/APPS/.sql/drop_tables.sql || {
-        echo "Error: Failed to drop tables. Please check the SQL file and database permissions."
-        exit 1
-    }
-
-    # Import custom SQL file
-    echo "Importing custom SQL file..."
-    mysql -u rduser -p"$MYSQL_PASSWORD" Rivendell < /home/rd/imports/APPS/.sql/RDDB_v430_Cloud.sql || {
-        echo "Error: Failed to import custom SQL file. Please check the SQL file and database permissions."
-        exit 1
-    }
-
-    echo "Database tables updated successfully."
-}
-
-grant_privileges() {
-    echo "Granting additional privileges to rduser..."
-    mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "GRANT DROP, CREATE, INSERT, SELECT, DELETE, ALTER ON Rivendell.* TO 'rduser'@'localhost'; FLUSH PRIVILEGES;" || {
-        echo "Error: Failed to grant privileges. Please check the MySQL root password and permissions."
-        exit 1
-    }
-    echo "Privileges granted."
-}
-
-revoke_privileges() {
-    echo "Revoking additional privileges from rduser..."
-    mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "REVOKE DROP, CREATE, ALTER ON Rivendell.* FROM 'rduser'@'localhost'; FLUSH PRIVILEGES;" || {
-        echo "Error: Failed to revoke privileges. Please check the MySQL root password and permissions."
-        exit 1
-    }
-    echo "Privileges revoked."
-}
-
-# Main script execution
-extract_mysql_password
-
-# Drop and replace tables using rduser
-drop_and_replace_tables
-
-# If additional privileges are needed (only if rduser lacks permissions)
-# grant_privileges
-# drop_and_replace_tables
-# revoke_privileges
 
 # Configure cron jobs
 configure_cron() {
@@ -461,17 +382,33 @@ harden_ssh() {
     echo "SSH access has been hardened. Password authentication is now disabled."
 }
 
-# Clean up .bashrc after installation
-cleanup_bashrc() {
-    echo "Cleaning up .bashrc..."
-    sudo sed -i '/cd \/home\/rd\/Rivendell-Cloud/d' /home/rd/.bashrc
-    echo "Cleanup complete. .bashrc restored to its original state."
-}
-
 # Main script execution
 if ! step_completed system_update; then system_update; fi
+
+# Create 'rd' user and copy working directory (only on first run)
+if ! step_completed create_rd_user; then
+    create_rd_user
+    copy_working_directory
+    configure_shell_profile
+fi
+
+# Enforce 'rd' user check before reboot
+if [ "$(whoami)" != "rd" ]; then
+    echo "ERROR: This script must be run as the 'rd' user."
+    echo "Please switch to the 'rd' user and reboot the system."
+    echo "To switch to the 'rd' user, run:"
+    echo "  su rd"
+    echo "Then reboot the system by running:"
+    echo "  sudo reboot"
+    echo "After rebooting, log in as the 'rd' user and rerun this script."
+    prompt_reboot
+    exit 1
+fi
+
+# Now running as 'rd' after reboot
 if ! step_completed hostname_timezone; then hostname_timezone; fi
-if ! step_completed create_rd_user; then create_rd_user; fi
+
+# Continue with the rest of the installation steps
 if ! step_completed install_tasksel; then install_tasksel; fi
 if ! step_completed install_mate; then install_mate; fi
 if ! step_completed install_xrdp; then install_xrdp; fi

@@ -1,14 +1,24 @@
 # Changelog
 #
-# v0.19.0 - 2025-03-15
+## v0.19.1 - 2025-03-15
+### Changes:
+#   - Fixed duplicate function definitions.
+#   - Reordered steps to ensure 'rd' user is created before enforcing the 'rd' user check.
+#   - Moved 'hostname_timezone' to run only after reboot.
+#   - Prevented 'copy_working_directory' from running twice.
+#   - Updated version number in header.
+#
+## v0.19.0 - 2025-03-15
+### Changes:
 - **Added backup and restore functionality for .bashrc.
 - **Improved SQL password handling for database operations.
 - **Updated Icecast configuration.
 - **Added error handling for SQL operations.
 - **Integrated optional privilege management for rduser.
 - **Improved readability and added comments for clarity.
-##
-# v0.18.0 - 2025-03-14
+#
+## v0.18.0 - 2025-03-14
+### Changes:
 - **Initial release of the script.
 - **Includes installation of Rivendell, MATE Desktop, xRDP, and broadcasting tools.
 - **Added step tracking to avoid re-running completed steps.
@@ -30,7 +40,7 @@
 - **Improved**: Graceful handling of mid-script reboots to ensure the script resumes correctly.
 - **Updated**: Documentation and prompts for better user guidance during installation.
 - **Tested**: Verified on a fresh Ubuntu installation to ensure smooth execution after reboots.
-
+#
 ## v0.17.1 (2025-03-14)
 ### Changes:
 - **RAdded mid-script reboot handling to allow reboots after installing MATE Desktop and xRDP.
@@ -51,8 +61,7 @@
 - **RAdded a `log` function to log non-interactive output while preserving interactive prompts.
 - **RUpdated log file handling to ensure proper permissions and ownership.
 - ** # - Removed `exec > >(tee -a "$TEMP_LOG_FILE") 2>&1` to prevent interference with interactive prompts.
-
-
+#
 ## v0.15 - 2025-03-13
 ### Changes:
 - **Interactive terminal check**: Added a check to ensure the script runs in an interactive terminal.
@@ -64,8 +73,7 @@
 - **Renamed `Desktop Shortcuts` to `Shortcuts`**: Updated paths to reflect the renamed folder.
 - **Added RDP login note**: Prompted the user to log in via RDP before moving shortcuts.
 - **Improved `rd` user creation**: Added a password prompt and ensured correct permissions for the home directory.
-
-
+#
 ## v0.14 - 2025-03-13
 ### Changes:
 - **Fixed log file creation**: Used a temporary file in `/tmp` before moving it to `/home/rd` after the `rd` user is created.
