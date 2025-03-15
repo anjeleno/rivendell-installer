@@ -1,34 +1,31 @@
 #!/bin/bash
 # Rivendell Auto-Install Script
-# Version: 0.19.1
+# Version: 0.19.2
 # Date: 2025-03-15
 # Author: Branjeleno
 # Git Repository: https://github.com/yourusername/Rivendell-Cloud
 # Description: This script automates the installation and configuration of Rivendell,
 #              MATE Desktop, xRDP, and related broadcasting tools optimized to run
-#              on Ubuntu 22.04 in a cloud VPS with an advanced custom configuration.
-#              It includes everything you need out-of-the-box to stream with liquidsoap,
-#              icecast, and Stere Tool and more.
+#              on Ubuntu 22.04 in a cloud VPS. It includes everything you need
+#              out-of-the-box to stream liquidsoap, icecast, and Stere Tool.
 #
 # Usage: Run as your default user. Ensure you have sudo privileges.
 #        After a reboot, rerun the script as the 'rd' user to resume installation.
 #        
 #        cd Rivendell-Cloud
-#        chmod +x Rivendell-auto-install-v0.19.1.sh
-#        sudo ./Rivendell-auto-install-v0.19.1.sh
+#        chmod +x Rivendell-auto-install-v0.19.2.sh
+#        sudo ./Rivendell-auto-install-v0.19.2.sh
 #        Reboot when prompted
 #        cd Rivendell-Cloud
 #        su rd (enter the password you set)
-#        ./Rivendell-auto-install-v0.19.1.sh
+#        ./Rivendell-auto-install-v0.19.2.sh
 #        Enter the password you set for rd if prompted
 
 # Changelog:
-# v0.19.1 - 2025-03-15
-#   - Fixed duplicate function definitions.
-#   - Reordered steps to ensure 'rd' user is created before enforcing the 'rd' user check.
-#   - Moved 'hostname_timezone' to run only after reboot.
-#   - Prevented 'copy_working_directory' from running twice.
-#   - Updated version number in header.
+# v0.19.2 - 2025-03-16
+#   - Added debugging output for copying the working directory and configuring .bashrc.
+#   - Ensured the script enforces the 'rd' user check after reboot.
+#   - Fixed step tracking to ensure steps are marked as completed correctly.
 
 set -e  # Exit on error
 set -x  # Enable debugging
@@ -111,17 +108,25 @@ create_rd_user() {
 # Copy working directory to /home/rd/Rivendell-Cloud
 copy_working_directory() {
     echo "Copying working directory to /home/rd/Rivendell-Cloud..."
-    sudo cp -r "$(pwd)" /home/rd/Rivendell-Cloud
-    sudo chown -R rd:rd /home/rd/Rivendell-Cloud
-    echo "Working directory copied successfully."
+    if [ -d "/home/rd/Rivendell-Cloud" ]; then
+        echo "Working directory already exists. Skipping copy."
+    else
+        sudo cp -r "$(pwd)" /home/rd/Rivendell-Cloud
+        sudo chown -R rd:rd /home/rd/Rivendell-Cloud
+        echo "Working directory copied successfully."
+    fi
 }
 
 # Configure .bashrc to auto-change directory on login
 configure_shell_profile() {
     echo "Configuring shell profile to auto-change directory on login..."
-    echo "cd /home/rd/Rivendell-Cloud" | sudo tee -a /home/rd/.bashrc > /dev/null
-    sudo chown rd:rd /home/rd/.bashrc
-    echo "Shell profile configured."
+    if grep -q "cd /home/rd/Rivendell-Cloud" /home/rd/.bashrc; then
+        echo "Shell profile already configured. Skipping..."
+    else
+        echo "cd /home/rd/Rivendell-Cloud" | sudo tee -a /home/rd/.bashrc > /dev/null
+        sudo chown rd:rd /home/rd/.bashrc
+        echo "Shell profile configured."
+    fi
 }
 
 # Clean up .bashrc after installation
@@ -142,6 +147,29 @@ prompt_reboot() {
         exit 1
     fi
 }
+
+# Main script execution
+if ! step_completed system_update; then system_update; fi
+
+# Create 'rd' user and copy working directory (only on first run)
+if ! step_completed create_rd_user; then
+    create_rd_user
+    copy_working_directory
+    configure_shell_profile
+fi
+
+# Enforce 'rd' user check before reboot
+if [ "$(whoami)" != "rd" ]; then
+    echo "ERROR: This script must be run as the 'rd' user."
+    echo "Please switch to the 'rd' user and reboot the system."
+    echo "To switch to the 'rd' user, run:"
+    echo "  su rd"
+    echo "Then reboot the system by running:"
+    echo "  sudo reboot"
+    echo "After rebooting, log in as the 'rd' user and rerun this script."
+    prompt_reboot
+    exit 1
+fi
 
 # Install tasksel if not already installed
 install_tasksel() {
