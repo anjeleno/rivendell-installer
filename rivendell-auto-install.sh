@@ -1,6 +1,6 @@
 #!/bin/bash
 # Rivendell Auto-Install Script
-# Version: 0.20.16
+# Version: 0.20.31
 # Date: 2025-03-16
 # Author: Branjeleno
 # Description: This script automates the installation and configuration of Rivendell,
@@ -25,12 +25,21 @@ set -x  # Enable debugging
 
 # Persistent step tracking directory
 STEP_DIR="/home/rd/rivendell_install_steps"
+INITIAL_STEPS_COMPLETED="/home/rd/initial_steps_completed"
+TMP_STEP_DIR="/tmp/rivendell_install_steps"
 
 # Ensure the step tracking directory exists and has the correct permissions
 ensure_step_dir() {
     if [ ! -d "$STEP_DIR" ]; then
         sudo mkdir -p "$STEP_DIR"
         sudo chown rd:rd "$STEP_DIR"
+    fi
+}
+
+# Ensure the temporary step tracking directory exists
+ensure_tmp_step_dir() {
+    if [ ! -d "$TMP_STEP_DIR" ]; then
+        sudo mkdir -p "$TMP_STEP_DIR"
     fi
 }
 
@@ -43,7 +52,7 @@ confirm() {
 # Function to check if a step has already been completed
 step_completed() {
     local step_name="$1"
-    if [ -f "$STEP_DIR/$step_name" ]; then
+    if [ -f "$STEP_DIR/$step_name" ] || [ -f "$TMP_STEP_DIR/$step_name" ]; then
         echo "Step '$step_name' already completed. Skipping..."
         return 0
     else
@@ -54,7 +63,11 @@ step_completed() {
 # Function to mark a step as completed
 mark_step_completed() {
     local step_name="$1"
-    touch "$STEP_DIR/$step_name"
+    if [ "$(whoami)" != "rd" ]; then
+        touch "$TMP_STEP_DIR/$step_name"
+    else
+        touch "$STEP_DIR/$step_name"
+    fi
 }
 
 # Function to ensure the script is running as the 'rd' user
@@ -119,6 +132,16 @@ copy_working_directory() {
         echo "Working directory already exists. Skipping copy."
     fi
     mark_step_completed "copy_working_directory"
+}
+
+backup_bashrc() {
+    echo "Backing up original .bashrc..."
+    if [ -f /home/rd/.bashrc ]; then
+        sudo cp /home/rd/.bashrc /home/rd/.bashrc.bak
+        sudo chown rd:rd /home/rd/.bashrc.bak
+        echo "Original .bashrc backed up to .bashrc.bak"
+    fi
+    mark_step_completed "backup_bashrc"
 }
 
 configure_shell_profile() {
@@ -323,6 +346,33 @@ extract_mysql_password() {
     mark_step_completed "extract_mysql_password"
 }
 
+# Grant additional privileges to rduser
+grant_privileges() {
+    echo "Granting additional privileges to rduser..."
+    mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "GRANT DROP, CREATE, INSERT, SELECT, DELETE, ALTER ON Rivendell.* TO 'rduser'@'localhost'; FLUSH PRIVILEGES;"
+    echo "Privileges granted."
+    mark_step_completed "grant_privileges"
+}
+
+# Revoke additional privileges from rduser
+revoke_privileges() {
+    echo "Revoking additional privileges from rduser..."
+    mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "REVOKE DROP, CREATE, ALTER ON Rivendell.* FROM 'rduser'@'localhost'; FLUSH PRIVILEGES;"
+    echo "Privileges revoked."
+    mark_step_completed "revoke_privileges"
+}
+
+# Drop and replace tables in the Rivendell database
+drop_and_replace_tables() {
+    grant_privileges
+    echo "Dropping and replacing tables in the Rivendell database..."
+    mysql -u rduser -p"$MYSQL_PASSWORD" Rivendell < /home/rd/imports/APPS/.sql/drop_tables.sql
+    mysql -u rduser -p"$MYSQL_PASSWORD" Rivendell < /home/rd/imports/APPS/.sql/RDDB_v430_Cloud.sql
+    revoke_privileges
+    echo "Database tables updated successfully."
+    mark_step_completed "drop_and_replace_tables"
+}
+
 update_backup_script() {
     echo "Updating daily_db_backup.sh with MySQL password..."
     sed -i "s|SQL_PASSWORD_GOES_HERE|${MYSQL_PASSWORD}|" /home/rd/imports/APPS/.sql/daily_db_backup.sh
@@ -394,10 +444,34 @@ final_reboot() {
     sudo reboot
 }
 
-# Main script execution after reboot as 'rd' user
+# Main script execution
+if [ "$(whoami)" != "rd" ]; then
+    # First run as root or default user
+    TMP_STEP_DIR="/tmp/rivendell_install_steps"
+    mkdir -p "$TMP_STEP_DIR"
+
+    system_update
+    set_hostname
+    create_rd_user
+    copy_working_directory
+    backup_bashrc
+    configure_shell_profile
+    touch "$INITIAL_STEPS_COMPLETED"
+    sudo chown rd:rd "$INITIAL_STEPS_COMPLETED"
+    prompt_reboot
+    exit 1
+fi
+
+# After reboot, running as rd user
 ensure_rd_user
 
+# Ensure the step directory exists
+ensure_step_dir
+
+# Always start from setting the timezone after reboot
 if ! step_completed "set_timezone"; then set_timezone; fi
+
+# Continue with the remaining steps
 if ! step_completed "install_tasksel"; then install_tasksel; fi
 if ! step_completed "install_mate"; then install_mate; fi
 if ! step_completed "install_xrdp"; then install_xrdp; fi
@@ -413,6 +487,8 @@ if ! step_completed "enable_icecast"; then enable_icecast; fi
 if ! step_completed "disable_pulseaudio"; then disable_pulseaudio; fi
 if ! step_completed "fix_qt5"; then fix_qt5; fi
 if ! step_completed "extract_mysql_password"; then extract_mysql_password; fi
+if ! step_completed "grant_privileges"; then grant_privileges; fi
+if ! step_completed "drop_and_replace_tables"; then drop_and_replace_tables; fi
 if ! step_completed "update_backup_script"; then update_backup_script; fi
 if ! step_completed "configure_cron"; then configure_cron; fi
 if ! step_completed "enable_firewall"; then enable_firewall; fi
