@@ -1,4 +1,8 @@
 # Changelog
+## v0.20.2 - 2025-03-15
+### Changes:
+- **Refining logic.
+#
 ## v0.20.1 - 2025-03-15
 ### Changes:
 - **Keep first run logic, combine new features, rinse and repeat.
