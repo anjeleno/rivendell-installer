@@ -1,6 +1,6 @@
 #!/bin/bash
 # Rivendell Auto-Install Script
-# Version: 0.20.12
+# Version: 0.20.13
 # Date: 2025-03-15
 # Author: Branjeleno
 # Description: This script automates the installation and configuration of Rivendell,
