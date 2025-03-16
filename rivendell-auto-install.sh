@@ -1,7 +1,7 @@
 #!/bin/bash
 # Rivendell Auto-Install Script
-# Version: 0.20.13
-# Date: 2025-03-15
+# Version: 0.20.16
+# Date: 2025-03-16
 # Author: Branjeleno
 # Description: This script automates the installation and configuration of Rivendell,
 #              MATE Desktop, xRDP, and related broadcasting tools optimized to run
@@ -259,7 +259,7 @@ configure_icecast() {
     # Check if the custom icecast.xml exists
     if [ -f /home/rd/imports/APPS/icecast.xml ]; then
         sudo cp -f /home/rd/imports/APPS/icecast.xml /etc/icecast2/icecast.xml
-        sudo chown icecast2:icecast2 /etc/icecast2/icecast.xml
+        sudo chown root:icecast /etc/icecast2/icecast.xml
         sudo chmod 640 /etc/icecast2/icecast.xml
         echo "Custom icecast.xml copied successfully."
     else
