@@ -1,4 +1,7 @@
 # Changelog
+## v0.19.9 - 2025-03-15
+### Changes:
+- **Debugging.
 #
 ## v0.19.8 - 2025-03-15
 ### Changes:
