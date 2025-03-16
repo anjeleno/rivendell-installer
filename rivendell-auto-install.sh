@@ -1,26 +1,7 @@
 #!/bin/bash
 # Rivendell Auto-Install Script
-# Version: 0.19.9
+# Version: 0.20.0
 # Date: 2025-03-15
-# Author: Branjeleno
-# Git Repository: https://github.com/yourusername/rivendell-Cloud
-# Description: This script automates the installation and configuration of Rivendell,
-#              MATE Desktop, xRDP, and related broadcasting tools optimized to run
-#              on Ubuntu 22.04 in a cloud VPS with an advanced custom configuration.
-#              It includes everything you need out-of-the-box to stream with liquidsoap,
-#              icecast, Stere Tool and more.
-#
-# Usage: Run as your default user. Ensure you have sudo privileges.
-#        After a reboot, rerun the script as the 'rd' user to resume installation.
-#        
-#        cd Rivendell-Cloud
-#        chmod +x Rivendell-auto-install-v0.19.10.sh
-#        sudo ./Rivendell-auto-install-v0.19.10.sh
-#        Reboot when prompted
-#        cd Rivendell-Cloud
-#        su rd (enter the password you set)
-#        ./Rivendell-auto-install-v0.19.10.sh
-#        Enter the password you set for rd if prompted
 
 set -e  # Exit on error
 set -x  # Enable debugging
@@ -34,34 +15,96 @@ confirm() {
     [[ $REPLY =~ ^[Yy]$ ]] || exit 1
 }
 
-# Function to check if a step has already been completed
-step_completed() {
-    local step_name="$1"
-    echo "Checking if step '$step_name' is completed..."
-    
-    if [ -f "$STEP_DIR/$step_name" ]; then
-        echo "Step '$step_name' already completed. Skipping..."
+# Function to check if a step has been completed
+check_step() {
+    [ -f "$STEP_DIR/$1" ]
+}
+
+# Function to mark a step as completed
+mark_step_complete() {
+    touch "$STEP_DIR/$1"
+}
+
+# Function to check if we're in the initial setup phase
+is_initial_setup() {
+    # Check if the rd user doesn't exist yet and current user has sudo privileges
+    if ! id -u rd >/dev/null 2>&1 && sudo -v >/dev/null 2>&1; then
         return 0
     else
-        echo "Step '$step_name' not completed. Running step..."
-        if "$@"; then
-            echo "Step '$step_name' succeeded. Marking as completed."
-            touch "$STEP_DIR/$step_name"
-            return 0
-        else
-            echo "Step '$step_name' failed. Please troubleshoot and rerun the script."
-            exit 1
-        fi
+        return 1
     fi
 }
 
-# Update and upgrade the system
-system_update() {
-    echo "Updating system..."
-    sudo apt update && sudo apt dist-upgrade -y
+# Function to check if we're running as rd user
+is_rd_user() {
+    [ "$(whoami)" = "rd" ]
 }
 
-# Set hostname and timezone
+# Function to check sudo access
+check_sudo() {
+    if ! sudo -v >/dev/null 2>&1; then
+        echo "Error: This script requires sudo privileges."
+        echo "Please ensure you have sudo access and try again."
+        exit 1
+    fi
+}
+
+# Initial setup function (runs as sudo user)
+perform_initial_setup() {
+    echo "Performing initial setup..."
+    
+    # Check for sudo privileges
+    check_sudo
+    
+    if ! check_step "system_update"; then
+        echo "Updating system..."
+        sudo apt update && sudo apt dist-upgrade -y
+        mark_step_complete "system_update"
+    fi
+    
+    # Create rd user if doesn't exist
+    if ! id -u rd >/dev/null 2>&1; then
+        # Create the rd user
+        sudo adduser --disabled-password --gecos "rd,Rivendell Audio,,," --home /home/rd rd
+        sudo usermod -aG sudo rd
+        
+        # Set password for rd user
+        echo "Please set a password for the rd user:"
+        sudo passwd rd
+        
+        # Create Rivendell-Cloud directory
+        sudo mkdir -p /home/rd/Rivendell-Cloud
+        
+        # Copy current directory contents to rd's home
+        sudo cp -r "$(pwd)/"* /home/rd/Rivendell-Cloud/
+        sudo chown -R rd:rd /home/rd
+        
+        # Set up .bashrc to auto-change directory
+        echo "cd /home/rd/Rivendell-Cloud" | sudo tee -a /home/rd/.bashrc > /dev/null
+        sudo chown rd:rd /home/rd/.bashrc
+        
+        # Create step tracking directory
+        sudo mkdir -p "$STEP_DIR"
+        sudo chown -R rd:rd "$STEP_DIR"
+        
+        mark_step_complete "create_rd_user"
+        
+        echo "Initial setup complete. Please:"
+        echo "1. Reboot the system"
+        echo "2. Log back in"
+        echo "3. Switch to rd user with: su rd"
+        echo "4. Run this script again"
+        
+        confirm "Would you like to reboot now?"
+        sudo reboot
+    fi
+}
+
+# Main installation function (runs as rd user)
+perform_installation() {
+    echo "Performing main installation as rd user..."
+    
+# Set hostname and timezone if not already done
 hostname_timezone() {
     echo "Setting hostname and timezone..."
 
@@ -171,11 +214,11 @@ install_tasksel() {
     sudo apt install tasksel -y
 }
 
-# Install MATE Desktop using tasksel as root (original method with su)
+# Install MATE Desktop using tasksel as root
 install_mate() {
     echo "Installing MATE Desktop..."
     echo "MATE Desktop installing as root. On the next screen, use the arrow keys and spacebar to select MATE, OK and enter to continue."
-    su -c "tasksel"
+    sudo tasksel install mate-desktop
 }
 
 # Install xRDP

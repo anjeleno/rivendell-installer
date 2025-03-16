@@ -1,4 +1,8 @@
 # Changelog
+## v0.20.0 - 2025-03-15
+### Changes:
+- **Logic overhaul.
+#
 ## v0.19.9 - 2025-03-15
 ### Changes:
 - **Debugging.
