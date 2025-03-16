@@ -1,6 +1,6 @@
 #!/bin/bash
 # Rivendell Auto-Install Script
-# Version: 0.19.8
+# Version: 0.19.9
 # Date: 2025-03-15
 # Author: Branjeleno
 # Git Repository: https://github.com/yourusername/rivendell-Cloud
@@ -14,12 +14,12 @@
 #        After a reboot, rerun the script as the 'rd' user to resume installation.
 #        
 #        cd Rivendell-Cloud
-#        chmod +x Rivendell-auto-install-v0.19.8.sh
-#        sudo ./Rivendell-auto-install-v0.19.8.sh
+#        chmod +x Rivendell-auto-install-v0.19.10.sh
+#        sudo ./Rivendell-auto-install-v0.19.10.sh
 #        Reboot when prompted
 #        cd Rivendell-Cloud
 #        su rd (enter the password you set)
-#        ./Rivendell-auto-install-v0.19.8.sh
+#        ./Rivendell-auto-install-v0.19.10.sh
 #        Enter the password you set for rd if prompted
 
 set -e  # Exit on error
