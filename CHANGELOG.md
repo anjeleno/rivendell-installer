@@ -1,5 +1,9 @@
 # Changelog
 #
+## v0.19.8 - 2025-03-15
+### Changes:
+- **Combining first-run logic from v0.19.0 with improvmements in step-tracking in v0.19.7.
+#
 ## v0.19.7 - 2025-03-15
 ### Changes:
 - **Fixing logic.

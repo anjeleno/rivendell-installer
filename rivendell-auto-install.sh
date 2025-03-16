@@ -1,6 +1,6 @@
 #!/bin/bash
 # Rivendell Auto-Install Script
-# Version: 0.19.7
+# Version: 0.19.8
 # Date: 2025-03-15
 # Author: Branjeleno
 # Git Repository: https://github.com/yourusername/rivendell-Cloud
@@ -14,17 +14,13 @@
 #        After a reboot, rerun the script as the 'rd' user to resume installation.
 #        
 #        cd Rivendell-Cloud
-#        chmod +x Rivendell-auto-install-v0.19.5.sh
-#        sudo ./Rivendell-auto-install-v0.19.5.sh
+#        chmod +x Rivendell-auto-install-v0.19.8.sh
+#        sudo ./Rivendell-auto-install-v0.19.8.sh
 #        Reboot when prompted
 #        cd Rivendell-Cloud
 #        su rd (enter the password you set)
-#        ./Rivendell-auto-install-v0.19.5.sh
+#        ./Rivendell-auto-install-v0.19.8.sh
 #        Enter the password you set for rd if prompted
-
-# Changelog:
-# v0.19.7 - 2025-03-15
-#   - Fixing logic
 
 set -e  # Exit on error
 set -x  # Enable debugging
@@ -175,11 +171,11 @@ install_tasksel() {
     sudo apt install tasksel -y
 }
 
-# Install MATE Desktop using tasksel as root
+# Install MATE Desktop using tasksel as root (original method with su)
 install_mate() {
     echo "Installing MATE Desktop..."
     echo "MATE Desktop installing as root. On the next screen, use the arrow keys and spacebar to select MATE, OK and enter to continue."
-    sudo tasksel install mate-desktop
+    su -c "tasksel"
 }
 
 # Install xRDP
