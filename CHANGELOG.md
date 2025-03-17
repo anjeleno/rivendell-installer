@@ -1,4 +1,14 @@
 # Changelog
+## v0.20.54 - 2025-03-17
+### Changes:
+- **Resolving last issue: injecting nightly backup script into crontab.
+- **Added housekeeping to remove installation files. 
+#
+## v0.20.53 - 2025-03-17
+### Changes:
+- **Removed duplicate and conflicting entries in script.
+- **Resolved creating meta.txt
+#
 ## v0.20.51 - 2025-03-17
 ### Changes:
 - **Dropping default Rivendell tables and importing custom sql with advanced featues implemented

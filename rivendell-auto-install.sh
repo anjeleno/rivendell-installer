@@ -1,6 +1,6 @@
 #!/bin/bash
 # Rivendell Auto-Install Script
-# Version: 0.20.51
+# Version: 0.20.53
 # Date: 2025-03-17
 # Author: Branjeleno
 # Description: This script automates the installation and configuration of Rivendell,
@@ -308,7 +308,17 @@ final_reboot() {
 # Update and upgrade the system
 system_update() {
     echo "Updating system..."
+    while sudo fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
+        echo "Waiting for other apt processes to finish..."
+        sleep 5
+    done
     sudo apt update && sudo apt dist-upgrade -y
+    if [ $? -eq 0 ]; then
+        echo "System update completed successfully."
+    else
+        echo "System update failed."
+        exit 1
+    fi
     mark_step_completed "system_update"
 }
 
@@ -564,192 +574,6 @@ move_custom_configs() {
     mark_step_completed "move_custom_configs"
 }
 
-# Replace default icecast.xml with custom icecast.xml
-configure_icecast() {
-    echo "Configuring Icecast..."
-
-    # Backup the original icecast.xml
-    if [ -f /etc/icecast2/icecast.xml ]; then
-        sudo cp /etc/icecast2/icecast.xml /etc/icecast2/icecast.xml.bak
-        echo "Backed up original icecast.xml to /etc/icecast2/icecast.xml.bak"
-    fi
-
-    # Check if the custom icecast.xml exists
-    if [ -f /home/rd/imports/APPS/icecast.xml ]; then
-        sudo cp -f /home/rd/imports/APPS/icecast.xml /etc/icecast2/icecast.xml
-        sudo chown root:icecast /etc/icecast2/icecast.xml
-        sudo chmod 640 /etc/icecast2/icecast.xml
-        echo "Custom icecast.xml copied successfully."
-    else
-        echo "Error: /home/rd/imports/APPS/icecast.xml does not exist. Please check the file path."
-        exit 1
-    fi
-
-    echo "Icecast configuration updated."
-    mark_step_completed "configure_icecast"
-}
-
-enable_icecast() {
-    echo "Enabling and starting Icecast..."
-
-    # Reload systemd and start Icecast
-    sudo systemctl daemon-reload
-    sudo systemctl enable icecast2
-    sudo systemctl start icecast2
-
-    echo "Icecast service enabled and started. Skipping status check to avoid blocking the script."
-    mark_step_completed "enable_icecast"
-}
-
-# Disable PulseAudio and configure audio
-disable_pulseaudio() {
-    echo "Disabling PulseAudio..."
-    sudo killall pulseaudio || true
-    sudo sed -i 's/# autospawn = yes/autospawn = no/' /etc/pulse/client.conf
-    sudo gpasswd -d pulse audio || true
-    sudo usermod -aG audio rd
-    sudo usermod -aG audio rivendell
-    sudo usermod -aG audio liquidsoap
-    sudo tee -a /etc/security/limits.conf <<EOL
-@audio      hard      rtprio          90
-@audio      hard      memlock     unlimited
-EOL
-    mark_step_completed "disable_pulseaudio"
-}
-
-# Fix QT5 XCB error
-fix_qt5() {
-    echo "Fixing QT5 XCB error..."
-    sudo ln -s /home/rd/.Xauthority /root/.Xauthority
-    mark_step_completed "fix_qt5"
-}
-
-# Extract MySQL password and store it in a global variable
-extract_mysql_password() {
-    echo "Extracting MySQL password from /etc/rd.conf..."
-    
-    # Extract the MySQL password from the [mySQL] section
-    MYSQL_PASSWORD=$(awk -F= '/\[mySQL\]/{flag=1;next}/\[/{flag=0}flag && /Password=/{print $2;exit}' /etc/rd.conf)
-    
-    # Check if the password was extracted successfully
-    if [ -z "$MYSQL_PASSWORD" ]; then
-        echo "Error: Failed to extract MySQL password from /etc/rd.conf. Please check the file and ensure the [mySQL] section exists."
-        exit 1
-    else
-        echo "MySQL password extracted successfully: $MYSQL_PASSWORD"
-    fi
-    mark_step_completed "extract_mysql_password"
-}
-
-update_backup_script() {
-    echo "Updating daily_db_backup.sh with MySQL password..."
-    sed -i "s|SQL_PASSWORD_GOES_HERE|${MYSQL_PASSWORD}|" /home/rd/imports/APPS/.sql/daily_db_backup.sh
-    sed -i 's/ -p /-p/' /home/rd/imports/APPS/.sql/daily_db_backup.sh
-    echo "Backup script updated successfully."
-    mark_step_completed "update_backup_script"
-}
-
-# Enable firewall
-enable_firewall() {
-    echo "Configuring firewall..."
-    sudo apt install -y ufw
-
-    # Prompt user for external IP
-    echo "Please enter your external IP address to allow in the firewall:"
-    read -p "External IP: " EXTERNAL_IP
-
-    # Prompt user for LAN subnet (e.g., 192.168.1.0/24)
-    echo "Please enter your LAN subnet (e.g., 192.168.1.0/24):"
-    read -p "LAN Subnet: " LAN_SUBNET
-
-    # Apply firewall rules
-    sudo ufw allow 8000/tcp
-    sudo ufw allow ssh
-    sudo ufw allow from "$EXTERNAL_IP"
-    if [ -n "$LAN_SUBNET" ]; then
-        sudo ufw allow from "$LAN_SUBNET"
-    fi
-    sudo ufw enable
-    mark_step_completed "enable_firewall"
-}
-
-# Harden SSH access
-harden_ssh() {
-    echo "Hardening SSH access..."
-    echo "WARNING: This will disable password authentication and allow only SSH key-based login."
-    echo "Ensure you have added your SSH public key to ~/.ssh/authorized_keys and confirmed you can log in with it."
-    confirm "Have you confirmed SSH key-based login works and want to proceed with hardening SSH?"
-
-    # Backup SSH config files
-    sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config-BAK
-    sudo cp /etc/ssh/sshd_config.d/50-cloud-init.conf /etc/ssh/sshd_config.d/50-cloud-init.conf-BAK
-
-    # Disable password authentication in sshd_config
-    sudo sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/g' /etc/ssh/sshd_config
-    sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/g' /etc/ssh/sshd_config
-
-    # Disable password authentication in 50-cloud-init.conf
-    sudo sed -i 's/PasswordAuthentication yes/PasswordAuthentication no/g' /etc/ssh/sshd_config.d/50-cloud-init.conf
-
-    sudo systemctl restart ssh
-    echo "SSH access has been hardened. Password authentication is now disabled."
-    mark_step_completed "harden_ssh"
-}
-
-# Drop tables and import SQL backup
-import_sql_backup() {
-    echo "Importing SQL backup..."
-
-    DB_HOST="localhost"  # MariaDB server hostname
-    DB_USER="rduser"  # MariaDB username
-    DB_PASS="$MYSQL_PASSWORD"  # MySQL password extracted earlier
-    DB_NAME="Rivendell"  # MariaDB database name
-    BACKUP_FILE="/home/rd/imports/APPS/RDDB_v430_Cloud.sql"  # Path to your SQL backup file
-
-    # Function to execute MariaDB commands
-    execute_mariadb_command() {
-        mariadb -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" "$@" 2>&1
-    }
-
-    # Drop all tables in the database
-    echo "Dropping all tables in database '$DB_NAME'..."
-    execute_mariadb_command -e "SET FOREIGN_KEY_CHECKS = 0; DROP TABLE IF EXISTS \`*\`; SET FOREIGN_KEY_CHECKS = 1;"
-
-    # Import the SQL backup
-    echo "Importing SQL backup from '$BACKUP_FILE'..."
-    mariadb -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$BACKUP_FILE" 2>&1
-
-    # Check for errors during import
-    if [ $? -ne 0 ]; then
-        echo "Error importing SQL backup!"
-        exit 1
-    fi
-
-    echo "SQL backup imported successfully!"
-    mark_step_completed "import_sql_backup"
-}
-
-# Restore original .bashrc for rd user
-restore_bashrc() {
-    echo "Restoring original .bashrc for rd user..."
-    if [ -f /home/rd/.bashrc.bak ]; then
-        sudo mv /home/rd/.bashrc.bak /home/rd/.bashrc
-        sudo chown rd:rd /home/rd/.bashrc
-        echo "Original .bashrc restored."
-    else
-        echo "Backup .bashrc not found. Skipping restore."
-    fi
-    mark_step_completed "restore_bashrc"
-}
-
-# Prompt user to reboot
-final_reboot() {
-    confirm "Would you like to reboot now to apply changes?"
-    mark_step_completed "final_reboot"
-    echo "Rebooting system..."
-    sudo reboot
-}
-
 # Main script execution
 if [ "$(whoami)" != "rd" ]; then
     # First run as root or default user
@@ -784,6 +608,7 @@ if ! step_completed "install_xrdp"; then install_xrdp; fi
 if ! step_completed "configure_xrdp"; then configure_xrdp; fi
 if ! step_completed "set_mate_default"; then set_mate_default; fi
 if ! step_completed "install_rivendell"; then install_rivendell; fi
+if ! step_completed "touch_pypad"; then touch_pypad; fi
 if ! step_completed "install_broadcasting_tools"; then install_broadcasting_tools; fi
 if ! step_completed "create_directories"; then create_directories; fi
 if ! step_completed "move_apps"; then move_apps; fi
