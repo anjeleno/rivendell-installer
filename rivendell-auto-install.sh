@@ -1,7 +1,7 @@
 #!/bin/bash
 # Rivendell Auto-Install Script
-# Version: 0.20.48
-# Date: 2025-03-16
+# Version: 0.20.50
+# Date: 2025-03-17
 # Author: Branjeleno
 # Description: This script automates the installation and configuration of Rivendell,
 #              MATE Desktop, xRDP, and related broadcasting tools optimized to run
@@ -105,6 +105,39 @@ extract_mysql_password() {
     mark_step_completed "extract_mysql_password"
 }
 
+# Drop tables and import SQL backup
+import_sql_backup() {
+    echo "Dropping all tables in database 'Rivendell' and importing SQL backup..."
+
+    DB_HOST="localhost"
+    DB_USER="rduser"
+    DB_PASS="$MYSQL_PASSWORD"
+    DB_NAME="Rivendell"
+    BACKUP_FILE="/home/rd/imports/APPS/RDDB_v430_Cloud.sql"
+
+    # Function to execute MariaDB commands
+    execute_mariadb_command() {
+        mariadb -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" "$@" 2>&1
+    }
+
+    # Drop all tables in the database
+    echo "Dropping all tables in database '$DB_NAME'..."
+    execute_mariadb_command -e "SET FOREIGN_KEY_CHECKS = 0; DROP TABLE IF EXISTS \`*\`; SET FOREIGN_KEY_CHECKS = 1;"
+
+    # Import the SQL backup
+    echo "Importing SQL backup from '$BACKUP_FILE'..."
+    mariadb -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$BACKUP_FILE" 2>&1
+
+    # Check for errors during import
+    if [ $? -ne 0 ]; then
+        echo "Error importing SQL backup!"
+        exit 1
+    fi
+
+    echo "SQL backup imported successfully!"
+    mark_step_completed "import_sql_backup"
+}
+
 update_backup_script() {
     echo "Updating daily_db_backup.sh with MySQL password..."
     sed -i "s|SQL_PASSWORD_GOES_HERE|${MYSQL_PASSWORD}|" /home/rd/imports/APPS/.sql/daily_db_backup.sh
@@ -166,6 +199,96 @@ harden_ssh() {
     sudo systemctl restart ssh
     echo "SSH access has been hardened. Password authentication is now disabled."
     mark_step_completed "harden_ssh"
+}
+
+# Move custom configs
+move_custom_configs() {
+    echo "Moving custom configs..."
+    mkdir -p /home/rd/.config/vlc
+    mkdir -p /home/rd/.config/rncbc.org
+
+    if [ -f /home/rd/imports/APPS/configs/vlc-qt-interface.conf ]; then
+        mv /home/rd/imports/APPS/configs/vlc-qt-interface.conf /home/rd/.config/vlc/vlc-qt-interface.conf
+    fi
+
+    if [ -f /home/rd/imports/APPS/configs/vlcc ]; then
+        mv /home/rd/imports/APPS/configs/vlcc /home/rd/.config/vlc/vlcc
+    fi
+
+    if [ -f /home/rd/imports/APPS/configs/QjackCtl.conf ]; then
+        mv /home/rd/imports/APPS/configs/QjackCtl.conf /home/rd/.config/rncbc.org/QjackCtl.conf
+    fi
+
+    if [ -f /home/rd/imports/APPS/configs/.stereo_tool_gui_jack_64_1030.rc ]; then
+        mv /home/rd/imports/APPS/configs/.stereo_tool_gui_jack_64_1030.rc /home/rd/.stereo_tool_gui_jack_64_1030.rc
+    fi
+
+    chown -R rd:rd /home/rd/.config/vlc
+    chown -R rd:rd /home/rd/.config/rncbc.org
+    chown rd:rd /home/rd/.stereo_tool_gui_jack_64_1030.rc
+
+    echo "Custom configs moved successfully."
+    mark_step_completed "move_custom_configs"
+}
+
+# Replace default icecast.xml with custom icecast.xml
+configure_icecast() {
+    echo "Configuring Icecast..."
+
+    # Backup the original icecast.xml
+    if [ -f /etc/icecast2/icecast.xml ]; then
+        sudo cp /etc/icecast2/icecast.xml /etc/icecast2/icecast.xml.bak
+        echo "Backed up original icecast.xml to /etc/icecast2/icecast.xml.bak"
+    fi
+
+    # Check if the custom icecast.xml exists
+    if [ -f /home/rd/imports/APPS/icecast.xml ]; then
+        sudo cp -f /home/rd/imports/APPS/icecast.xml /etc/icecast2/icecast.xml
+        sudo chown root:icecast /etc/icecast2/icecast.xml
+        sudo chmod 640 /etc/icecast2/icecast.xml
+        echo "Custom icecast.xml copied successfully."
+    else
+        echo "Error: /home/rd/imports/APPS/icecast.xml does not exist. Please check the file path."
+        exit 1
+    fi
+
+    echo "Icecast configuration updated."
+    mark_step_completed "configure_icecast"
+}
+
+enable_icecast() {
+    echo "Enabling and starting Icecast..."
+
+    # Reload systemd and start Icecast
+    sudo systemctl daemon-reload
+    sudo systemctl enable icecast2
+    sudo systemctl start icecast2
+
+    echo "Icecast service enabled and started. Skipping status check to avoid blocking the script."
+    mark_step_completed "enable_icecast"
+}
+
+# Disable PulseAudio and configure audio
+disable_pulseaudio() {
+    echo "Disabling PulseAudio..."
+    sudo killall pulseaudio || true
+    sudo sed -i 's/# autospawn = yes/autospawn = no/' /etc/pulse/client.conf
+    sudo gpasswd -d pulse audio || true
+    sudo usermod -aG audio rd
+    sudo usermod -aG audio rivendell
+    sudo usermod -aG audio liquidsoap
+    sudo tee -a /etc/security/limits.conf <<EOL
+@audio      hard      rtprio          90
+@audio      hard      memlock     unlimited
+EOL
+    mark_step_completed "disable_pulseaudio"
+}
+
+# Fix QT5 XCB error
+fix_qt5() {
+    echo "Fixing QT5 XCB error..."
+    sudo ln -s /home/rd/.Xauthority /root/.Xauthority
+    mark_step_completed "fix_qt5"
 }
 
 # Restore original .bashrc for rd user
@@ -322,10 +445,28 @@ install_rivendell() {
     mark_step_completed "install_rivendell"
 }
 
-# Create pypad text file for now and next meta to web or external app
+# Create pypad text file to send RD now and next meta to web or external app
 touch_pypad() {
+    echo "Creating /var/www/html/meta.txt..."
+
+    # Ensure the directory exists
+    if [ ! -d /var/www/html ]; then
+        sudo mkdir -p /var/www/html
+    fi
+
+    # Create the meta.txt file
     sudo touch /var/www/html/meta.txt
+
+    # Change ownership of the meta.txt file
     sudo chown pypad:pypad /var/www/html/meta.txt
+
+    if [ -f /var/www/html/meta.txt ]; then
+        echo "meta.txt created and ownership set to pypad:pypad successfully."
+    else
+        echo "Failed to create meta.txt."
+        exit 1
+    fi
+
     mark_step_completed "touch_pypad"
 }
 
@@ -385,18 +526,46 @@ move_custom_configs() {
 
     if [ -f /home/rd/imports/APPS/configs/vlc-qt-interface.conf ]; then
         mv /home/rd/imports/APPS/configs/vlc-qt-interface.conf /home/rd/.config/vlc/vlc-qt-interface.conf
+        if [ $? -eq 0 ]; then
+            echo "Moved vlc-qt-interface.conf successfully"
+        else
+            echo "Failed to move vlc-qt-interface.conf"
+        fi
+    else
+        echo "vlc-qt-interface.conf not found"
     fi
 
     if [ -f /home/rd/imports/APPS/configs/vlcc ]; then
         mv /home/rd/imports/APPS/configs/vlcc /home/rd/.config/vlc/vlcc
+        if [ $? -eq 0 ]; then
+            echo "Moved vlcc successfully"
+        else
+            echo "Failed to move vlcc"
+        fi
+    else
+        echo "vlcc not found"
     fi
 
     if [ -f /home/rd/imports/APPS/configs/QjackCtl.conf ]; then
         mv /home/rd/imports/APPS/configs/QjackCtl.conf /home/rd/.config/rncbc.org/QjackCtl.conf
+        if [ $? -eq 0 ]; then
+            echo "Moved QjackCtl.conf successfully"
+        else
+            echo "Failed to move QjackCtl.conf"
+        fi
+    else
+        echo "QjackCtl.conf not found"
     fi
 
     if [ -f /home/rd/imports/APPS/configs/.stereo_tool_gui_jack_64_1030.rc ]; then
         mv /home/rd/imports/APPS/configs/.stereo_tool_gui_jack_64_1030.rc /home/rd/.stereo_tool_gui_jack_64_1030.rc
+        if [ $? -eq 0 ]; then
+            echo "Moved .stereo_tool_gui_jack_64_1030.rc successfully"
+        else
+            echo "Failed to move .stereo_tool_gui_jack_64_1030.rc"
+        fi
+    else
+        echo ".stereo_tool_gui_jack_64_1030.rc not found"
     fi
 
     chown -R rd:rd /home/rd/.config/vlc
@@ -495,7 +664,7 @@ update_backup_script() {
 # Configure cron jobs
 configure_cron() {
     echo "Configuring cron jobs..."
-    (crontab -l 2>/dev/null; echo "05 00 * * * /home/rd/imports/APPS/.sql/daily_db_backup.sh >> /home/rd/imports/APPS/.sql/cron_execution.log 2>&1") | crontab -
+    (crontab -l 2>/dev/null; echo "05 00 * * * /home/rd/imports/APPS/.sql/daily_db_backup.sh") | crontab -
     (crontab -l 2>/dev/null; echo "15 00 * * * /home/rd/imports/APPS/autologgen.sh") | crontab -
     mark_step_completed "configure_cron"
 }
@@ -547,34 +716,37 @@ harden_ssh() {
     mark_step_completed "harden_ssh"
 }
 
-# Move custom configs
-move_custom_configs() {
-    echo "Moving custom configs..."
-    mkdir -p /home/rd/.config/vlc
-    mkdir -p /home/rd/.config/rncbc.org
+# Drop tables and import SQL backup
+import_sql_backup() {
+    echo "Importing SQL backup..."
 
-    if [ -f /home/rd/imports/APPS/configs/vlc-qt-interface.conf ]; then
-        mv /home/rd/imports/APPS/configs/vlc-qt-interface.conf /home/rd/.config/vlc/vlc-qt-interface.conf
+    DB_HOST="localhost"  # MariaDB server hostname
+    DB_USER="rduser"  # MariaDB username
+    DB_PASS="$MYSQL_PASSWORD"  # MySQL password extracted earlier
+    DB_NAME="Rivendell"  # MariaDB database name
+    BACKUP_FILE="/home/rd/imports/APPS/RDDB_v430_Cloud.sql"  # Path to your SQL backup file
+
+    # Function to execute MariaDB commands
+    execute_mariadb_command() {
+        mariadb -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" "$@" 2>&1
+    }
+
+    # Drop all tables in the database
+    echo "Dropping all tables in database '$DB_NAME'..."
+    execute_mariadb_command -e "SET FOREIGN_KEY_CHECKS = 0; DROP TABLE IF EXISTS \`*\`; SET FOREIGN_KEY_CHECKS = 1;"
+
+    # Import the SQL backup
+    echo "Importing SQL backup from '$BACKUP_FILE'..."
+    mariadb -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$BACKUP_FILE" 2>&1
+
+    # Check for errors during import
+    if [ $? -ne 0 ]; then
+        echo "Error importing SQL backup!"
+        exit 1
     fi
 
-    if [ -f /home/rd/imports/APPS/configs/vlcc ]; then
-        mv /home/rd/imports/APPS/configs/vlcc /home/rd/.config/vlc/vlcc
-    fi
-
-    if [ -f /home/rd/imports/APPS/configs/QjackCtl.conf ]; then
-        mv /home/rd/imports/APPS/configs/QjackCtl.conf /home/rd/.config/rncbc.org/QjackCtl.conf
-    fi
-
-    if [ -f /home/rd/imports/APPS/configs/.stereo_tool_gui_jack_64_1030.rc ]; then
-        mv /home/rd/imports/APPS/configs/.stereo_tool_gui_jack_64_1030.rc /home/rd/.stereo_tool_gui_jack_64_1030.rc
-    fi
-
-    chown -R rd:rd /home/rd/.config/vlc
-    chown -R rd:rd /home/rd/.config/rncbc.org
-    chown rd:rd /home/rd/.stereo_tool_gui_jack_64_1030.rc
-
-    echo "Custom configs moved successfully."
-    mark_step_completed "move_custom_configs"
+    echo "SQL backup imported successfully!"
+    mark_step_completed "import_sql_backup"
 }
 
 # Restore original .bashrc for rd user
@@ -643,6 +815,7 @@ if ! step_completed "disable_pulseaudio"; then disable_pulseaudio; fi
 if ! step_completed "fix_qt5"; then fix_qt5; fi
 if ! step_completed "extract_mysql_password"; then extract_mysql_password; fi
 if ! step_completed "update_backup_script"; then update_backup_script; fi
+if ! step_completed "import_sql_backup"; then import_sql_backup; fi
 if ! step_completed "configure_cron"; then configure_cron; fi
 if ! step_completed "enable_firewall"; then enable_firewall; fi
 if ! step_completed "harden_ssh"; then harden_ssh; fi

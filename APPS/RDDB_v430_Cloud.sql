@@ -676,7 +676,7 @@ CREATE TABLE `DROPBOXES` (
 
 LOCK TABLES `DROPBOXES` WRITE;
 /*!40000 ALTER TABLE `DROPBOXES` DISABLE KEYS */;
-INSERT INTO `DROPBOXES` VALUES (1,'onair','MUSIC','/home/rd/imports/MUSIC/*',-1300,0,'N',0,'N',-1400,3000,'N','N','N','Y','Y','N','%i',0,0,'N','N','/home/rd/logs/dropbox.log','N',0,0,'');
+INSERT INTO `DROPBOXES` VALUES (1,'onair','MUSIC','/home/rd/Music/*',-1300,0,'N',0,'N',-1400,3000,'N','N','N','Y','Y','N','%i',0,0,'N','N','/home/rd/logs/dropbox.log','N',0,0,'');
 /*!40000 ALTER TABLE `DROPBOXES` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -1231,7 +1231,7 @@ CREATE TABLE `GROUPS` (
 
 LOCK TABLES `GROUPS` WRITE;
 /*!40000 ALTER TABLE `GROUPS` DISABLE KEYS */;
-INSERT INTO `GROUPS` VALUES ('TEMP','Temporary Carts',1,0,0,-1,-1,'N','%f','N','N','N','N','#000000',''),('TEST','Test Carts',1,0,0,-1,-1,'N','Imported from %f.%e','N','N','N','N',NULL,NULL),('TRAFFIC','Traffic Carts',1,1,10000,-1,-1,'N','Imported from %f.%e','N','Y','N','N',NULL,NULL),('MUSIC','Music Carts',1,10001,40000,-1,-1,'N','Imported from %f.%e','N','N','Y','Y',NULL,NULL),('BEDS','Music Bed Carts',1,40001,45000,-1,-1,'N','Imported from %f.%e','N','N','N','N',NULL,NULL),('STINGS','Short stingers',1,45001,50000,-1,-1,'N','Imported from %f.%e','N','N','N','N',NULL,NULL),('MACROS','Macro Carts',2,50001,60000,-1,-1,'N','Imported from %f.%e','N','N','N','N',NULL,NULL),('LEGAL','Legal IDs',1,60001,60100,-1,-1,'N','Imported from %f.%e','N','N','N','N',NULL,NULL),('IDENTS','General IDs',1,60101,60500,-1,-1,'N','Imported from %f.%e','N','N','N','N',NULL,NULL);
+INSERT INTO `GROUPS` VALUES ('TEMP','Temporary Carts',1,0,0,-1,-1,'N','%f','N','N','N','N','#000000',''),('TEST','Test Carts',1,0,0,-1,-1,'N','Imported from %f.%e','N','N','N','N',NULL,NULL),('TRAFFIC','Traffic Carts',1,1,10000,-1,-1,'N','Imported from %f.%e','N','Y','N','N',NULL,NULL),('MUSIC','Music Carts',1,10001,40000,-1,-1,'N','%f','N','N','Y','Y','#000000',''),('BEDS','Music Bed Carts',1,40001,45000,-1,-1,'N','Imported from %f.%e','N','N','N','N',NULL,NULL),('STINGS','Short stingers',1,45001,50000,-1,-1,'N','Imported from %f.%e','N','N','N','N',NULL,NULL),('MACROS','Macro Carts',2,50001,60000,-1,-1,'N','Imported from %f.%e','N','N','N','N',NULL,NULL),('LEGAL','Legal IDs',1,60001,60100,-1,-1,'N','Imported from %f.%e','N','N','N','N',NULL,NULL),('IDENTS','General IDs',1,60101,60500,-1,-1,'N','Imported from %f.%e','N','N','N','N',NULL,NULL);
 /*!40000 ALTER TABLE `GROUPS` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -3336,4 +3336,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-03-14 20:51:51
+-- Dump completed on 2025-03-17  9:13:11

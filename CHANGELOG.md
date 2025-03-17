@@ -1,4 +1,11 @@
 # Changelog
+## v0.20.50 - 2025-03-17
+### Changes:
+- **Housekeeping.
+- **Fixing the sql nightly backup injection in crontab
+- **vlcc config wasn't getting moved. Added debugging and fixing.
+- **meta.txt isn't getting created. Added debugging and fixing.
+#
 ## v0.20.48 - 2025-03-16
 ### Changes:
 - **Tons of fixes. Adding custom liquidsoap, icecast, stereotool, vlc configs pullling all the magic together. 
