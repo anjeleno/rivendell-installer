@@ -1,4 +1,8 @@
 # Changelog
+## v0.20.48 - 2025-03-16
+### Changes:
+- **Tons of fixes. Adding custom liquidsoap, icecast, stereotool, vlc configs pullling all the magic together. 
+#
 ## v0.20.31 - 2025-03-16
 ### Changes:
 - **Working on logic. Still...

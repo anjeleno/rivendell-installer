@@ -1,6 +1,6 @@
 #!/bin/bash
 # Rivendell Auto-Install Script
-# Version: 0.20.31
+# Version: 0.20.48
 # Date: 2025-03-16
 # Author: Branjeleno
 # Description: This script automates the installation and configuration of Rivendell,
@@ -11,14 +11,13 @@
 # Usage: Run as your default user. Ensure you have sudo privileges.
 #        After a reboot, rerun the script as the 'rd' user to resume installation.
 #        
-#        cd Rivendell-Cloud
-#        chmod +x Rivendell-auto-install.sh
-#        sudo ./Rivendell-auto-install.sh
+#        On first run, set your root password with sudo passwd root
+#        Then cd Rivendell-Cloud ; chmod +x *.sh ; ./Rivendell-auto-install.sh
 #        Reboot when prompted
-#        cd Rivendell-Cloud
 #        su rd (enter the password you set)
 #        ./Rivendell-auto-install.sh
-#        Enter the password you set for rd if prompted
+#        Enter the password you set for rd when prompted
+#        Tasksel requires root to install MATE desktop. Enter your ROOT pw when prompted.
 
 set -e  # Exit on error
 set -x  # Enable debugging
@@ -79,6 +78,115 @@ ensure_rd_user() {
         echo "Then rerun the script."
         exit 1
     fi
+}
+
+# Ensure MySQL service is running
+ensure_mysql_running() {
+    if ! sudo systemctl is-active --quiet mariadb; then
+        echo "Starting MySQL service..."
+        sudo systemctl start mariadb
+    fi
+}
+
+# Extract MySQL password and store it in a global variable
+extract_mysql_password() {
+    echo "Extracting MySQL password from /etc/rd.conf..."
+    
+    # Extract the MySQL password from the [mySQL] section
+    MYSQL_PASSWORD=$(awk -F= '/\[mySQL\]/{flag=1;next}/\[/{flag=0}flag && /Password=/{print $2;exit}' /etc/rd.conf)
+    
+    # Check if the password was extracted successfully
+    if [ -z "$MYSQL_PASSWORD" ]; then
+        echo "Error: Failed to extract MySQL password from /etc/rd.conf. Please check the file and ensure the [mySQL] section exists."
+        exit 1
+    else
+        echo "MySQL password extracted successfully: $MYSQL_PASSWORD"
+    fi
+    mark_step_completed "extract_mysql_password"
+}
+
+update_backup_script() {
+    echo "Updating daily_db_backup.sh with MySQL password..."
+    sed -i "s|SQL_PASSWORD_GOES_HERE|${MYSQL_PASSWORD}|" /home/rd/imports/APPS/.sql/daily_db_backup.sh
+    sed -i 's/ -p /-p/' /home/rd/imports/APPS/.sql/daily_db_backup.sh
+    echo "Backup script updated successfully."
+    mark_step_completed "update_backup_script"
+}
+
+# Configure cron jobs
+configure_cron() {
+    echo "Configuring cron jobs..."
+    (crontab -l 2>/dev/null; echo "05 00 * * * /home/rd/imports/APPS/.sql/daily_db_backup.sh >> /home/rd/imports/APPS/.sql/cron_execution.log 2>&1") | crontab -
+    (crontab -l 2>/dev/null; echo "15 00 * * * /home/rd/imports/APPS/autologgen.sh") | crontab -
+    mark_step_completed "configure_cron"
+}
+
+# Enable firewall
+enable_firewall() {
+    echo "Configuring firewall..."
+    sudo apt install -y ufw
+
+    # Prompt user for external IP
+    echo "Please enter your external IP address to allow in the firewall:"
+    read -p "External IP: " EXTERNAL_IP
+
+    # Prompt user for LAN subnet (e.g., 192.168.1.0/24)
+    echo "Please enter your LAN subnet (e.g., 192.168.1.0/24):"
+    read -p "LAN Subnet: " LAN_SUBNET
+
+    # Apply firewall rules
+    sudo ufw allow 8000/tcp
+    sudo ufw allow ssh
+    sudo ufw allow from "$EXTERNAL_IP"
+    if [ -n "$LAN_SUBNET" ]; then
+        sudo ufw allow from "$LAN_SUBNET"
+    fi
+    sudo ufw enable
+    mark_step_completed "enable_firewall"
+}
+
+# Harden SSH access
+harden_ssh() {
+    echo "Hardening SSH access..."
+    echo "WARNING: This will disable password authentication and allow only SSH key-based login."
+    echo "Ensure you have added your SSH public key to ~/.ssh/authorized_keys and confirmed you can log in with it."
+    confirm "Have you confirmed SSH key-based login works and want to proceed with hardening SSH?"
+
+    # Backup SSH config files
+    sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config-BAK
+    sudo cp /etc/ssh/sshd_config.d/50-cloud-init.conf /etc/ssh/sshd_config.d/50-cloud-init.conf-BAK
+
+    # Disable password authentication in sshd_config
+    sudo sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/g' /etc/ssh/sshd_config
+    sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/g' /etc/ssh/sshd_config
+
+    # Disable password authentication in 50-cloud-init.conf
+    sudo sed -i 's/PasswordAuthentication yes/PasswordAuthentication no/g' /etc/ssh/sshd_config.d/50-cloud-init.conf
+
+    sudo systemctl restart ssh
+    echo "SSH access has been hardened. Password authentication is now disabled."
+    mark_step_completed "harden_ssh"
+}
+
+# Restore original .bashrc for rd user
+restore_bashrc() {
+    echo "Restoring original .bashrc for rd user..."
+    if [ -f /home/rd/.bashrc.bak ]; then
+        sudo mv /home/rd/.bashrc.bak /home/rd/.bashrc
+        sudo chown rd:rd /home/rd/.bashrc
+        echo "Original .bashrc restored."
+    else
+        echo "Backup .bashrc not found. Skipping restore."
+    fi
+    mark_step_completed "restore_bashrc"
+}
+
+# Prompt user to reboot
+final_reboot() {
+    confirm "Would you like to reboot now to apply changes?"
+    mark_step_completed "final_reboot"
+    echo "Rebooting system..."
+    sudo reboot
 }
 
 # Update and upgrade the system
@@ -269,6 +377,36 @@ move_shortcuts() {
     mark_step_completed "move_shortcuts"
 }
 
+# Move custom configs
+move_custom_configs() {
+    echo "Moving custom configs..."
+    mkdir -p /home/rd/.config/vlc
+    mkdir -p /home/rd/.config/rncbc.org
+
+    if [ -f /home/rd/imports/APPS/configs/vlc-qt-interface.conf ]; then
+        mv /home/rd/imports/APPS/configs/vlc-qt-interface.conf /home/rd/.config/vlc/vlc-qt-interface.conf
+    fi
+
+    if [ -f /home/rd/imports/APPS/configs/vlcc ]; then
+        mv /home/rd/imports/APPS/configs/vlcc /home/rd/.config/vlc/vlcc
+    fi
+
+    if [ -f /home/rd/imports/APPS/configs/QjackCtl.conf ]; then
+        mv /home/rd/imports/APPS/configs/QjackCtl.conf /home/rd/.config/rncbc.org/QjackCtl.conf
+    fi
+
+    if [ -f /home/rd/imports/APPS/configs/.stereo_tool_gui_jack_64_1030.rc ]; then
+        mv /home/rd/imports/APPS/configs/.stereo_tool_gui_jack_64_1030.rc /home/rd/.stereo_tool_gui_jack_64_1030.rc
+    fi
+
+    chown -R rd:rd /home/rd/.config/vlc
+    chown -R rd:rd /home/rd/.config/rncbc.org
+    chown rd:rd /home/rd/.stereo_tool_gui_jack_64_1030.rc
+
+    echo "Custom configs moved successfully."
+    mark_step_completed "move_custom_configs"
+}
+
 # Replace default icecast.xml with custom icecast.xml
 configure_icecast() {
     echo "Configuring Icecast..."
@@ -346,33 +484,6 @@ extract_mysql_password() {
     mark_step_completed "extract_mysql_password"
 }
 
-# Grant additional privileges to rduser
-grant_privileges() {
-    echo "Granting additional privileges to rduser..."
-    mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "GRANT DROP, CREATE, INSERT, SELECT, DELETE, ALTER ON Rivendell.* TO 'rduser'@'localhost'; FLUSH PRIVILEGES;"
-    echo "Privileges granted."
-    mark_step_completed "grant_privileges"
-}
-
-# Revoke additional privileges from rduser
-revoke_privileges() {
-    echo "Revoking additional privileges from rduser..."
-    mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "REVOKE DROP, CREATE, ALTER ON Rivendell.* FROM 'rduser'@'localhost'; FLUSH PRIVILEGES;"
-    echo "Privileges revoked."
-    mark_step_completed "revoke_privileges"
-}
-
-# Drop and replace tables in the Rivendell database
-drop_and_replace_tables() {
-    grant_privileges
-    echo "Dropping and replacing tables in the Rivendell database..."
-    mysql -u rduser -p"$MYSQL_PASSWORD" Rivendell < /home/rd/imports/APPS/.sql/drop_tables.sql
-    mysql -u rduser -p"$MYSQL_PASSWORD" Rivendell < /home/rd/imports/APPS/.sql/RDDB_v430_Cloud.sql
-    revoke_privileges
-    echo "Database tables updated successfully."
-    mark_step_completed "drop_and_replace_tables"
-}
-
 update_backup_script() {
     echo "Updating daily_db_backup.sh with MySQL password..."
     sed -i "s|SQL_PASSWORD_GOES_HERE|${MYSQL_PASSWORD}|" /home/rd/imports/APPS/.sql/daily_db_backup.sh
@@ -436,6 +547,49 @@ harden_ssh() {
     mark_step_completed "harden_ssh"
 }
 
+# Move custom configs
+move_custom_configs() {
+    echo "Moving custom configs..."
+    mkdir -p /home/rd/.config/vlc
+    mkdir -p /home/rd/.config/rncbc.org
+
+    if [ -f /home/rd/imports/APPS/configs/vlc-qt-interface.conf ]; then
+        mv /home/rd/imports/APPS/configs/vlc-qt-interface.conf /home/rd/.config/vlc/vlc-qt-interface.conf
+    fi
+
+    if [ -f /home/rd/imports/APPS/configs/vlcc ]; then
+        mv /home/rd/imports/APPS/configs/vlcc /home/rd/.config/vlc/vlcc
+    fi
+
+    if [ -f /home/rd/imports/APPS/configs/QjackCtl.conf ]; then
+        mv /home/rd/imports/APPS/configs/QjackCtl.conf /home/rd/.config/rncbc.org/QjackCtl.conf
+    fi
+
+    if [ -f /home/rd/imports/APPS/configs/.stereo_tool_gui_jack_64_1030.rc ]; then
+        mv /home/rd/imports/APPS/configs/.stereo_tool_gui_jack_64_1030.rc /home/rd/.stereo_tool_gui_jack_64_1030.rc
+    fi
+
+    chown -R rd:rd /home/rd/.config/vlc
+    chown -R rd:rd /home/rd/.config/rncbc.org
+    chown rd:rd /home/rd/.stereo_tool_gui_jack_64_1030.rc
+
+    echo "Custom configs moved successfully."
+    mark_step_completed "move_custom_configs"
+}
+
+# Restore original .bashrc for rd user
+restore_bashrc() {
+    echo "Restoring original .bashrc for rd user..."
+    if [ -f /home/rd/.bashrc.bak ]; then
+        sudo mv /home/rd/.bashrc.bak /home/rd/.bashrc
+        sudo chown rd:rd /home/rd/.bashrc
+        echo "Original .bashrc restored."
+    else
+        echo "Backup .bashrc not found. Skipping restore."
+    fi
+    mark_step_completed "restore_bashrc"
+}
+
 # Prompt user to reboot
 final_reboot() {
     confirm "Would you like to reboot now to apply changes?"
@@ -482,15 +636,15 @@ if ! step_completed "install_broadcasting_tools"; then install_broadcasting_tool
 if ! step_completed "create_directories"; then create_directories; fi
 if ! step_completed "move_apps"; then move_apps; fi
 if ! step_completed "move_shortcuts"; then move_shortcuts; fi
+if ! step_completed "move_custom_configs"; then move_custom_configs; fi
 if ! step_completed "configure_icecast"; then configure_icecast; fi
 if ! step_completed "enable_icecast"; then enable_icecast; fi
 if ! step_completed "disable_pulseaudio"; then disable_pulseaudio; fi
 if ! step_completed "fix_qt5"; then fix_qt5; fi
 if ! step_completed "extract_mysql_password"; then extract_mysql_password; fi
-if ! step_completed "grant_privileges"; then grant_privileges; fi
-if ! step_completed "drop_and_replace_tables"; then drop_and_replace_tables; fi
 if ! step_completed "update_backup_script"; then update_backup_script; fi
 if ! step_completed "configure_cron"; then configure_cron; fi
 if ! step_completed "enable_firewall"; then enable_firewall; fi
 if ! step_completed "harden_ssh"; then harden_ssh; fi
+if ! step_completed "restore_bashrc"; then restore_bashrc; fi
 if ! step_completed "final_reboot"; then final_reboot; fi
