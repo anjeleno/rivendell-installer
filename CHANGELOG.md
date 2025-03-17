@@ -1,4 +1,11 @@
 # Changelog
+## v0.20.51 - 2025-03-17
+### Changes:
+- **Dropping default Rivendell tables and importing custom sql with advanced featues implemented
+- **Debugging the sql nightly backup injection in crontab
+- **Fixed vlcrc config getting moved
+- **Debugging meta.txt creation.
+#
 ## v0.20.50 - 2025-03-17
 ### Changes:
 - **Housekeeping.

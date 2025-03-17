@@ -1,6 +1,6 @@
 #!/bin/bash
 # Rivendell Auto-Install Script
-# Version: 0.20.50
+# Version: 0.20.51
 # Date: 2025-03-17
 # Author: Branjeleno
 # Description: This script automates the installation and configuration of Rivendell,
@@ -149,8 +149,25 @@ update_backup_script() {
 # Configure cron jobs
 configure_cron() {
     echo "Configuring cron jobs..."
-    (crontab -l 2>/dev/null; echo "05 00 * * * /home/rd/imports/APPS/.sql/daily_db_backup.sh >> /home/rd/imports/APPS/.sql/cron_execution.log 2>&1") | crontab -
+
+    # Add the cron job for daily_db_backup.sh
+    (crontab -l 2>/dev/null; echo "05 00 * * * /home/rd/imports/APPS/.sql/daily_db_backup.sh") | crontab -
+    if [ $? -eq 0 ]; then
+        echo "Cron job for daily_db_backup.sh added successfully."
+    else
+        echo "Failed to add cron job for daily_db_backup.sh."
+        exit 1
+    fi
+
+    # Add the cron job for autologgen.sh
     (crontab -l 2>/dev/null; echo "15 00 * * * /home/rd/imports/APPS/autologgen.sh") | crontab -
+    if [ $? -eq 0 ]; then
+        echo "Cron job for autologgen.sh added successfully."
+    else
+        echo "Failed to add cron job for autologgen.sh."
+        exit 1
+    fi
+
     mark_step_completed "configure_cron"
 }
 
@@ -199,36 +216,6 @@ harden_ssh() {
     sudo systemctl restart ssh
     echo "SSH access has been hardened. Password authentication is now disabled."
     mark_step_completed "harden_ssh"
-}
-
-# Move custom configs
-move_custom_configs() {
-    echo "Moving custom configs..."
-    mkdir -p /home/rd/.config/vlc
-    mkdir -p /home/rd/.config/rncbc.org
-
-    if [ -f /home/rd/imports/APPS/configs/vlc-qt-interface.conf ]; then
-        mv /home/rd/imports/APPS/configs/vlc-qt-interface.conf /home/rd/.config/vlc/vlc-qt-interface.conf
-    fi
-
-    if [ -f /home/rd/imports/APPS/configs/vlcc ]; then
-        mv /home/rd/imports/APPS/configs/vlcc /home/rd/.config/vlc/vlcc
-    fi
-
-    if [ -f /home/rd/imports/APPS/configs/QjackCtl.conf ]; then
-        mv /home/rd/imports/APPS/configs/QjackCtl.conf /home/rd/.config/rncbc.org/QjackCtl.conf
-    fi
-
-    if [ -f /home/rd/imports/APPS/configs/.stereo_tool_gui_jack_64_1030.rc ]; then
-        mv /home/rd/imports/APPS/configs/.stereo_tool_gui_jack_64_1030.rc /home/rd/.stereo_tool_gui_jack_64_1030.rc
-    fi
-
-    chown -R rd:rd /home/rd/.config/vlc
-    chown -R rd:rd /home/rd/.config/rncbc.org
-    chown rd:rd /home/rd/.stereo_tool_gui_jack_64_1030.rc
-
-    echo "Custom configs moved successfully."
-    mark_step_completed "move_custom_configs"
 }
 
 # Replace default icecast.xml with custom icecast.xml
@@ -307,6 +294,12 @@ restore_bashrc() {
 # Prompt user to reboot
 final_reboot() {
     confirm "Would you like to reboot now to apply changes?"
+
+    # Delete specified directories
+    echo "Deleting /home/rd/Rivendell-Cloud and /home/rd/rivendell_install_steps..."
+    rm -rf /home/rd/Rivendell-Cloud
+    rm -rf /home/rd/rivendell_install_steps
+
     mark_step_completed "final_reboot"
     echo "Rebooting system..."
     sudo reboot
@@ -445,20 +438,15 @@ install_rivendell() {
     mark_step_completed "install_rivendell"
 }
 
-# Create pypad text file to send RD now and next meta to web or external app
+# Create pypad text file for now and next meta to web or external app
 touch_pypad() {
     echo "Creating /var/www/html/meta.txt..."
 
-    # Ensure the directory exists
-    if [ ! -d /var/www/html ]; then
-        sudo mkdir -p /var/www/html
-    fi
-
     # Create the meta.txt file
-    sudo touch /var/www/html/meta.txt
+    su -c "touch /var/www/html/meta.txt"
 
     # Change ownership of the meta.txt file
-    sudo chown pypad:pypad /var/www/html/meta.txt
+    su -c "chown pypad:pypad /var/www/html/meta.txt"
 
     if [ -f /var/www/html/meta.txt ]; then
         echo "meta.txt created and ownership set to pypad:pypad successfully."
@@ -535,15 +523,15 @@ move_custom_configs() {
         echo "vlc-qt-interface.conf not found"
     fi
 
-    if [ -f /home/rd/imports/APPS/configs/vlcc ]; then
-        mv /home/rd/imports/APPS/configs/vlcc /home/rd/.config/vlc/vlcc
+    if [ -f /home/rd/imports/APPS/configs/vlcrc ]; then
+        mv /home/rd/imports/APPS/configs/vlcrc /home/rd/.config/vlc/vlcrc
         if [ $? -eq 0 ]; then
-            echo "Moved vlcc successfully"
+            echo "Moved vlcrc successfully"
         else
-            echo "Failed to move vlcc"
+            echo "Failed to move vlcrc"
         fi
     else
-        echo "vlcc not found"
+        echo "vlcrc not found"
     fi
 
     if [ -f /home/rd/imports/APPS/configs/QjackCtl.conf ]; then
@@ -659,14 +647,6 @@ update_backup_script() {
     sed -i 's/ -p /-p/' /home/rd/imports/APPS/.sql/daily_db_backup.sh
     echo "Backup script updated successfully."
     mark_step_completed "update_backup_script"
-}
-
-# Configure cron jobs
-configure_cron() {
-    echo "Configuring cron jobs..."
-    (crontab -l 2>/dev/null; echo "05 00 * * * /home/rd/imports/APPS/.sql/daily_db_backup.sh") | crontab -
-    (crontab -l 2>/dev/null; echo "15 00 * * * /home/rd/imports/APPS/autologgen.sh") | crontab -
-    mark_step_completed "configure_cron"
 }
 
 # Enable firewall
