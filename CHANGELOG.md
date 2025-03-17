@@ -1,4 +1,8 @@
 # Changelog
+## v0.20.57 - 2025-03-17
+### Changes:
+- **autologgen injects into crtontab but sql nightly backup fails. Splitting them into separate functions to see if that works. Super annoying.
+#
 ## v0.20.56 - 2025-03-17
 ### Changes:
 - **Resolving last issue: injecting nightly backup script into crontab.🤔
