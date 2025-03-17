@@ -1,4 +1,9 @@
 # Changelog
+## v0.20.56 - 2025-03-17
+### Changes:
+- **Resolving last issue: injecting nightly backup script into crontab.🤔
+- **Changed sql backup path from /APPS/.sql to /APPS/sql. Fingers crossed. 
+#
 ## v0.20.54 - 2025-03-17
 ### Changes:
 - **Resolving last issue: injecting nightly backup script into crontab.

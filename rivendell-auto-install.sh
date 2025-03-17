@@ -1,6 +1,6 @@
 #!/bin/bash
 # Rivendell Auto-Install Script
-# Version: 0.20.53
+# Version: 0.20.55
 # Date: 2025-03-17
 # Author: Branjeleno
 # Description: This script automates the installation and configuration of Rivendell,
@@ -140,8 +140,8 @@ import_sql_backup() {
 
 update_backup_script() {
     echo "Updating daily_db_backup.sh with MySQL password..."
-    sed -i "s|SQL_PASSWORD_GOES_HERE|${MYSQL_PASSWORD}|" /home/rd/imports/APPS/.sql/daily_db_backup.sh
-    sed -i 's/ -p /-p/' /home/rd/imports/APPS/.sql/daily_db_backup.sh
+    sed -i "s|SQL_PASSWORD_GOES_HERE|${MYSQL_PASSWORD}|" /home/rd/imports/APPS/sql/daily_db_backup.sh
+    sed -i 's/ -p /-p/' /home/rd/imports/APPS/sql/daily_db_backup.sh
     echo "Backup script updated successfully."
     mark_step_completed "update_backup_script"
 }
@@ -151,7 +151,7 @@ configure_cron() {
     echo "Configuring cron jobs..."
 
     # Add the cron job for daily_db_backup.sh
-    (crontab -l 2>/dev/null; echo "05 00 * * * /home/rd/imports/APPS/.sql/daily_db_backup.sh") | crontab -
+    (crontab -l 2>/dev/null; echo "05 00 * * * /home/rd/imports/APPS/sql/daily_db_backup.sh") | crontab -
     if [ $? -eq 0 ]; then
         echo "Cron job for daily_db_backup.sh added successfully."
     else
@@ -291,16 +291,17 @@ restore_bashrc() {
     mark_step_completed "restore_bashrc"
 }
 
+# Housekeeping
+housekeeping() {
+    echo "Deleting /home/rd/Rivendell-Cloud and /home/rd/rivendell_install_steps..."
+    rm -rf /home/rd/Rivendell-Cloud
+    rm -rf /home/rd/rivendell_install_steps
+}
+
 # Prompt user to reboot
 final_reboot() {
     confirm "Would you like to reboot now to apply changes?"
 
-    # Delete specified directories
-    echo "Deleting /home/rd/Rivendell-Cloud and /home/rd/rivendell_install_steps..."
-    rm -rf /home/rd/Rivendell-Cloud
-    rm -rf /home/rd/rivendell_install_steps
-
-    mark_step_completed "final_reboot"
     echo "Rebooting system..."
     sudo reboot
 }
@@ -448,15 +449,20 @@ install_rivendell() {
     mark_step_completed "install_rivendell"
 }
 
-# Create pypad text file for now and next meta to web or external app
+# Create pypad text file to send RD now and next meta to web or external app
 touch_pypad() {
     echo "Creating /var/www/html/meta.txt..."
 
+    # Ensure the directory exists
+    if [ ! -d /var/www/html ]; then
+        sudo mkdir -p /var/www/html
+    fi
+
     # Create the meta.txt file
-    su -c "touch /var/www/html/meta.txt"
+    sudo touch /var/www/html/meta.txt
 
     # Change ownership of the meta.txt file
-    su -c "chown pypad:pypad /var/www/html/meta.txt"
+    sudo chown pypad:pypad /var/www/html/meta.txt
 
     if [ -f /var/www/html/meta.txt ]; then
         echo "meta.txt created and ownership set to pypad:pypad successfully."
@@ -625,4 +631,18 @@ if ! step_completed "configure_cron"; then configure_cron; fi
 if ! step_completed "enable_firewall"; then enable_firewall; fi
 if ! step_completed "harden_ssh"; then harden_ssh; fi
 if ! step_completed "restore_bashrc"; then restore_bashrc; fi
+
+# Housekeeping
+echo "Deleting /home/rd/Rivendell-Cloud and /home/rd/rivendell_install_steps..."
+rm -rf /home/rd/Rivendell-Cloud
+rm -rf /home/rd/rivendell_install_steps
+
+# Prompt user to reboot
+final_reboot() {
+    confirm "Would you like to reboot now to apply changes?"
+
+    echo "Rebooting system..."
+    sudo reboot
+}
+
 if ! step_completed "final_reboot"; then final_reboot; fi
