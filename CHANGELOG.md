@@ -1,4 +1,10 @@
 # Changelog
+## v0.21.0 - 2025-03-18
+### Changes:
+- **Fully automated installation and configuration of Rivendell, with advanced
+- **features optimized for Ubuntu 22.04 on a cloud VPS. It includes everything you need
+- **out-of-the-box to stream with Jack, liquidsoap, icecast and audio processing.
+#
 ## v0.20.58 - 2025-03-17
 ### Changes:
 - **Placed shortcut on deskto to add cronjobs to crontab. 

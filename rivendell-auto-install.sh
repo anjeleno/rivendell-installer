@@ -1,23 +1,28 @@
 #!/bin/bash
 # Rivendell Auto-Install Script
-# Version: 0.20.58
+# Version: 0.21.0
 # Date: 2025-03-17
-# Author: Branjeleno
+# Author: root@linuxconfigs.com
 # Description: This script automates the installation and configuration of Rivendell,
 #              MATE Desktop, xRDP, and related broadcasting tools optimized to run
-#              on Ubuntu 22.04 in a cloud VPS. It includes everything you need
-#              out-of-the-box to stream liquidsoap, icecast and Stere Tool.
+#              on Ubuntu 22.04 on a cloud VPS. It includes everything you need
+#              out-of-the-box to stream liquidsoap, icecast and audio processing.
 #
-# Usage: Run as your default user. Ensure you have sudo privileges.
-#        After a reboot, rerun the script as the 'rd' user to resume installation.
+#              Feel free to use my DigitalOcean referral link for a $200 redit to use
+#              over 60 days and I'll get a little hookup too. :)
+#              https://m.do.co/c/6fe3e9d36bc3
+#
+# Usage:       Run as your default user. Ensure you have sudo privileges.
+#              After a reboot, rerun the script as the 'rd' user to resume installation.
 #        
-#        On first run, set your root password with sudo passwd root
-#        Then cd Rivendell-Cloud ; chmod +x *.sh ; ./Rivendell-auto-install.sh
-#        Reboot when prompted
-#        su rd (enter the password you set)
-#        ./Rivendell-auto-install.sh
-#        Enter the password you set for rd when prompted
-#        Tasksel requires root to install MATE desktop. Enter your ROOT pw when prompted.
+#              On first run, set your root password with sudo passwd root
+#              Then cd Rivendell-Cloud ; chmod +x *.sh ; ./rivendell-auto-install.sh
+#              Reboot when prompted
+#              Login with: su rd (enter the password you set)
+#              ./Rivendell-auto-install.sh
+#              Enter the password you set for rd when prompted
+#              Tasksel requires root to install MATE desktop. 
+#              Enter your ROOT pw when prompted.
 
 set -e  # Exit on error
 # set -x  # Enable debugging
@@ -138,7 +143,7 @@ import_sql_backup() {
     mark_step_completed "import_sql_backup"
 }
 
-# Inject Rivendell SQL pw in nightly backup script
+# Inject Rivendell SQL password in nightly SQL backup script
 update_backup_script() {
     echo "Updating daily_db_backup.sh with MySQL password..."
     sed -i "s|SQL_PASSWORD_GOES_HERE|${MYSQL_PASSWORD}|" /home/rd/imports/APPS/sql/daily_db_backup.sh
@@ -147,7 +152,7 @@ update_backup_script() {
     mark_step_completed "update_backup_script"
 }
 
-# Enable firewall and open ports for your WAN and/or LAN IP address
+# Enable firewall and open ports for your WAN and/or LAN IP address(es)
 enable_firewall() {
     echo "Configuring firewall..."
     sudo apt install -y ufw
@@ -218,6 +223,7 @@ configure_icecast() {
     echo "Icecast configuration updated."
     mark_step_completed "configure_icecast"
 }
+
 # Enable icecast server to start automatically
 enable_icecast() {
     echo "Enabling and starting Icecast..."
@@ -318,7 +324,7 @@ create_rd_user() {
     mark_step_completed "create_rd_user"
 }
 
-# Setup tmp directories for Rivendell auto-install
+# Setup tmp directories for Rivendell auto-install in 'rd' user account
 copy_working_directory() {
     echo "Copying working directory to /home/rd/Rivendell-Cloud..."
     if [ ! -d "/home/rd/Rivendell-Cloud" ]; then
@@ -355,7 +361,7 @@ configure_shell_profile() {
     mark_step_completed "configure_shell_profile"
 }
 
-# Reboots system to apply updates and new hostname
+# Reboots system to apply Linux kernel updates and new hostname
 prompt_reboot() {
     echo "Reboot is required. Do you want to reboot now? (y/n)"
     read -r answer
@@ -376,7 +382,7 @@ install_tasksel() {
 # Install MATE Desktop using tasksel as root
 install_mate() {
     echo "Installing MATE Desktop..."
-    echo "MATE Desktop installing as root. Enter ROOT password On the next screen, use the arrow keys and spacebar to select MATE, OK and enter to continue."
+    echo "MATE Desktop installing as root. Enter ROOT password below. Then, use the arrow keys and spacebar to select MATE, OK and enter to continue."
     su -c "tasksel"
     mark_step_completed "install_mate"
 }
@@ -405,7 +411,7 @@ set_mate_default() {
     mark_step_completed "set_mate_default"
 }
 
-# Install Rivendell using server option (most flexible) automatically 
+# Installing Rivendell in 'Server Mode" (most flexible) option 
 install_rivendell() {
     echo "Installing Rivendell in Server mode..."
     wget https://software.paravelsystems.com/ubuntu/dists/jammy/main/install_rivendell.sh || return 1
@@ -414,7 +420,7 @@ install_rivendell() {
     mark_step_completed "install_rivendell"
 }
 
-# Create pypad text file to send RD now and next meta to web, RDS, or external app
+# Create pypad text file to optionally send RD now and next meta to web, RDS, or external app
 touch_pypad() {
     echo "Creating /var/www/html/meta.txt..."
 
@@ -598,7 +604,7 @@ if ! step_completed "restore_bashrc"; then restore_bashrc; fi
 
 # Housekeeping
 housekeeping() {
-    echo "Deleting tmp files"
+    echo "Cleaning up tmp files"
     rm -rf /home/rd/Rivendell-Cloud
     rm -rf /home/rd/rivendell_install_steps
 }
