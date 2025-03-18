@@ -1,6 +1,6 @@
 #!/bin/bash
 # Rivendell Auto-Install Script
-# Version: 0.20.56
+# Version: 0.20.58
 # Date: 2025-03-17
 # Author: Branjeleno
 # Description: This script automates the installation and configuration of Rivendell,
@@ -20,7 +20,7 @@
 #        Tasksel requires root to install MATE desktop. Enter your ROOT pw when prompted.
 
 set -e  # Exit on error
-set -x  # Enable debugging
+# set -x  # Enable debugging
 
 # Persistent step tracking directory
 STEP_DIR="/home/rd/rivendell_install_steps"
@@ -92,7 +92,7 @@ ensure_mysql_running() {
 extract_mysql_password() {
     echo "Extracting MySQL password from /etc/rd.conf..."
     
-    # Extract the MySQL password from the [mySQL] section
+    # Extract the MySQL password from the [mySQL] section of rd.conf
     MYSQL_PASSWORD=$(awk -F= '/\[mySQL\]/{flag=1;next}/\[/{flag=0}flag && /Password=/{print $2;exit}' /etc/rd.conf)
     
     # Check if the password was extracted successfully
@@ -105,7 +105,7 @@ extract_mysql_password() {
     mark_step_completed "extract_mysql_password"
 }
 
-# Drop tables and import SQL backup
+# Drop default tables and import custom SQL backup with advanced features in Rivendell db
 import_sql_backup() {
     echo "Dropping all tables in database 'Rivendell' and importing SQL backup..."
 
@@ -138,6 +138,7 @@ import_sql_backup() {
     mark_step_completed "import_sql_backup"
 }
 
+# Inject Rivendell SQL pw in nightly backup script
 update_backup_script() {
     echo "Updating daily_db_backup.sh with MySQL password..."
     sed -i "s|SQL_PASSWORD_GOES_HERE|${MYSQL_PASSWORD}|" /home/rd/imports/APPS/sql/daily_db_backup.sh
@@ -146,32 +147,7 @@ update_backup_script() {
     mark_step_completed "update_backup_script"
 }
 
-# Configure cron jobs
-configure_cron() {
-    echo "Configuring cron jobs..."
-
-    # Add the cron job for daily_db_backup.sh
-    (crontab -l 2>/dev/null; echo "05 00 * * * /home/rd/imports/APPS/sql/daily_db_backup.sh") | crontab -
-    if [ $? -eq 0 ]; then
-        echo "Cron job for daily_db_backup.sh added successfully."
-    else
-        echo "Failed to add cron job for daily_db_backup.sh."
-        exit 1
-    fi
-
-    # Add the cron job for autologgen.sh
-    (crontab -l 2>/dev/null; echo "15 00 * * * /home/rd/imports/APPS/autologgen.sh") | crontab -
-    if [ $? -eq 0 ]; then
-        echo "Cron job for autologgen.sh added successfully."
-    else
-        echo "Failed to add cron job for autologgen.sh."
-        exit 1
-    fi
-
-    mark_step_completed "configure_cron"
-}
-
-# Enable firewall
+# Enable firewall and open ports for your WAN and/or LAN IP address
 enable_firewall() {
     echo "Configuring firewall..."
     sudo apt install -y ufw
@@ -242,7 +218,7 @@ configure_icecast() {
     echo "Icecast configuration updated."
     mark_step_completed "configure_icecast"
 }
-
+# Enable icecast server to start automatically
 enable_icecast() {
     echo "Enabling and starting Icecast..."
 
@@ -255,7 +231,7 @@ enable_icecast() {
     mark_step_completed "enable_icecast"
 }
 
-# Disable PulseAudio and configure audio
+# Disable PulseAudio and configure audio priorities
 disable_pulseaudio() {
     echo "Disabling PulseAudio..."
     sudo killall pulseaudio || true
@@ -271,14 +247,14 @@ EOL
     mark_step_completed "disable_pulseaudio"
 }
 
-# Fix QT5 XCB error
+# Fix QT5 XCB error - fixes RD utilities that need root in xRDP enviornment
 fix_qt5() {
     echo "Fixing QT5 XCB error..."
     sudo ln -s /home/rd/.Xauthority /root/.Xauthority
     mark_step_completed "fix_qt5"
 }
 
-# Restore original .bashrc for rd user
+# Restore original .bashrc for rd user after final step
 restore_bashrc() {
     echo "Restoring original .bashrc for rd user..."
     if [ -f /home/rd/.bashrc.bak ]; then
@@ -289,21 +265,6 @@ restore_bashrc() {
         echo "Backup .bashrc not found. Skipping restore."
     fi
     mark_step_completed "restore_bashrc"
-}
-
-# Housekeeping
-housekeeping() {
-    echo "Deleting /home/rd/Rivendell-Cloud and /home/rd/rivendell_install_steps..."
-    rm -rf /home/rd/Rivendell-Cloud
-    rm -rf /home/rd/rivendell_install_steps
-}
-
-# Prompt user to reboot
-final_reboot() {
-    confirm "Would you like to reboot now to apply changes?"
-
-    echo "Rebooting system..."
-    sudo reboot
 }
 
 # Update and upgrade the system
@@ -323,7 +284,7 @@ system_update() {
     mark_step_completed "system_update"
 }
 
-# Set hostname
+# Set hostname to match custom Rivendell server config
 set_hostname() {
     echo "Setting hostname..."
     sudo hostnamectl set-hostname onair
@@ -357,6 +318,7 @@ create_rd_user() {
     mark_step_completed "create_rd_user"
 }
 
+# Setup tmp directories for Rivendell auto-install
 copy_working_directory() {
     echo "Copying working directory to /home/rd/Rivendell-Cloud..."
     if [ ! -d "/home/rd/Rivendell-Cloud" ]; then
@@ -369,6 +331,7 @@ copy_working_directory() {
     mark_step_completed "copy_working_directory"
 }
 
+# Backup virgin .bashrc file for recovery after final installation step
 backup_bashrc() {
     echo "Backing up original .bashrc..."
     if [ -f /home/rd/.bashrc ]; then
@@ -379,6 +342,7 @@ backup_bashrc() {
     mark_step_completed "backup_bashrc"
 }
 
+# Redirect shell to working directory during install requiring su rd
 configure_shell_profile() {
     echo "Configuring shell profile to auto-change directory on login..."
     if ! grep -q "cd /home/rd/Rivendell-Cloud" /home/rd/.bashrc; then
@@ -391,6 +355,7 @@ configure_shell_profile() {
     mark_step_completed "configure_shell_profile"
 }
 
+# Reboots system to apply updates and new hostname
 prompt_reboot() {
     echo "Reboot is required. Do you want to reboot now? (y/n)"
     read -r answer
@@ -411,7 +376,7 @@ install_tasksel() {
 # Install MATE Desktop using tasksel as root
 install_mate() {
     echo "Installing MATE Desktop..."
-    echo "MATE Desktop installing as root. On the next screen, use the arrow keys and spacebar to select MATE, OK and enter to continue."
+    echo "MATE Desktop installing as root. Enter ROOT password On the next screen, use the arrow keys and spacebar to select MATE, OK and enter to continue."
     su -c "tasksel"
     mark_step_completed "install_mate"
 }
@@ -440,16 +405,16 @@ set_mate_default() {
     mark_step_completed "set_mate_default"
 }
 
-# Install Rivendell
+# Install Rivendell using server option (most flexible) automatically 
 install_rivendell() {
-    echo "Installing Rivendell..."
+    echo "Installing Rivendell in Server mode..."
     wget https://software.paravelsystems.com/ubuntu/dists/jammy/main/install_rivendell.sh || return 1
     chmod +x install_rivendell.sh || return 1
     echo "2" | sudo ./install_rivendell.sh || return 1
     mark_step_completed "install_rivendell"
 }
 
-# Create pypad text file to send RD now and next meta to web or external app
+# Create pypad text file to send RD now and next meta to web, RDS, or external app
 touch_pypad() {
     echo "Creating /var/www/html/meta.txt..."
 
@@ -474,7 +439,7 @@ touch_pypad() {
     mark_step_completed "touch_pypad"
 }
 
-# Install broadcasting tools (Icecast, JACK, Liquidsoap, VLC)
+# Install broadcasting tools (Icecast, JACK, Liquidsoap, VLC) for streaming and capturing LIVE Remote audio
 install_broadcasting_tools() {
     echo "Installing broadcasting tools..."
     sudo apt install -y icecast2 jackd2 qjackctl liquidsoap vlc vlc-plugin-jack
@@ -522,7 +487,7 @@ move_shortcuts() {
     mark_step_completed "move_shortcuts"
 }
 
-# Move custom configs
+# Move custom configs to make persistent Jack connections, streaming and LIVE remote magic happen
 move_custom_configs() {
     echo "Moving custom configs..."
     mkdir -p /home/rd/.config/vlc
@@ -627,15 +592,16 @@ if ! step_completed "fix_qt5"; then fix_qt5; fi
 if ! step_completed "extract_mysql_password"; then extract_mysql_password; fi
 if ! step_completed "update_backup_script"; then update_backup_script; fi
 if ! step_completed "import_sql_backup"; then import_sql_backup; fi
-if ! step_completed "configure_cron"; then configure_cron; fi
 if ! step_completed "enable_firewall"; then enable_firewall; fi
 if ! step_completed "harden_ssh"; then harden_ssh; fi
 if ! step_completed "restore_bashrc"; then restore_bashrc; fi
 
 # Housekeeping
-echo "Deleting /home/rd/Rivendell-Cloud and /home/rd/rivendell_install_steps..."
-rm -rf /home/rd/Rivendell-Cloud
-rm -rf /home/rd/rivendell_install_steps
+housekeeping() {
+    echo "Deleting tmp files"
+    rm -rf /home/rd/Rivendell-Cloud
+    rm -rf /home/rd/rivendell_install_steps
+}
 
 # Prompt user to reboot
 final_reboot() {
