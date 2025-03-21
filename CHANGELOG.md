@@ -1,4 +1,9 @@
 # Changelog
+## v0.21.1 - 2025-03-20
+### Changes:
+- **Added multiple choice for Rivendell insatallation type.
+- **Fixed issue with UFW causing the script fail if you're working in a local VM and only plug in your local subnet without an WAN IP.
+#
 ## v0.21.0 - 2025-03-18
 ### Changes:
 - **Fully automated installation and configuration of Rivendell, with advanced

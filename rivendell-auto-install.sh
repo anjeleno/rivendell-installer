@@ -1,7 +1,7 @@
 #!/bin/bash
 # Rivendell Auto-Install Script
-# Version: 0.21.0
-# Date: 2025-03-17
+# Version: 0.21.1
+# Date: 2025-03-20
 # Author: root@linuxconfigs.com
 # Description: This script automates the installation and configuration of Rivendell,
 #              MATE Desktop, xRDP, and related broadcasting tools optimized to run
@@ -158,17 +158,19 @@ enable_firewall() {
     sudo apt install -y ufw
 
     # Prompt user for external IP
-    echo "Please enter your external IP address to allow in the firewall:"
+    echo "Please enter your external IP address to allow in the firewall (leave blank if not applicable):"
     read -p "External IP: " EXTERNAL_IP
 
-    # Prompt user for LAN subnet (e.g., 192.168.1.0/24)
-    echo "Please enter your LAN subnet (e.g., 192.168.1.0/24):"
+    # Prompt user for LAN subnet (e.g., 192.168.1.0/24) (leave blank if not applicable)
+    echo "Please enter your LAN subnet (e.g., 192.168.1.0/24) (leave blank if not applicable):"
     read -p "LAN Subnet: " LAN_SUBNET
 
     # Apply firewall rules
     sudo ufw allow 8000/tcp
     sudo ufw allow ssh
-    sudo ufw allow from "$EXTERNAL_IP"
+    if [ -n "$EXTERNAL_IP" ]; then
+        sudo ufw allow from "$EXTERNAL_IP"
+    fi
     if [ -n "$LAN_SUBNET" ]; then
         sudo ufw allow from "$LAN_SUBNET"
     fi
@@ -363,7 +365,7 @@ configure_shell_profile() {
 
 # Reboots system to apply Linux kernel updates and new hostname
 prompt_reboot() {
-    echo "Reboot is required. Do you want to reboot now? (y/n)"
+    echo "Reboot is required to apply kernel updates and new hostname. Do you want to reboot now? (y/n)"
     read -r answer
     if [ "$answer" != "${answer#[Yy]}" ]; then
         sudo reboot
@@ -406,17 +408,21 @@ configure_xrdp() {
 # Set MATE as the default session manager
 set_mate_default() {
     echo "Setting MATE as the default session manager..."
-    sudo update-alternatives --config x-session-manager <<< '2'  # Select MATE
-    sudo update-alternatives --config x-session-manager <<< '0'  # Set to auto mode
+    sudo update-alternatives --config x-session-manager
     mark_step_completed "set_mate_default"
 }
 
-# Installing Rivendell in 'Server Mode" (most flexible) option 
+# Install Rivendell
 install_rivendell() {
-    echo "Installing Rivendell in Server mode..."
+    echo "Installing Rivendell..."
     wget https://software.paravelsystems.com/ubuntu/dists/jammy/main/install_rivendell.sh || return 1
     chmod +x install_rivendell.sh || return 1
-    echo "2" | sudo ./install_rivendell.sh || return 1
+    echo "Please choose the installation type:"
+    echo "1) Standalone"
+    echo "2) Server"
+    echo "3) Client"
+    read -p "Enter the number of your choice: " choice
+    sudo ./install_rivendell.sh <<< "$choice" || return 1
     mark_step_completed "install_rivendell"
 }
 
