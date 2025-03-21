@@ -408,7 +408,8 @@ configure_xrdp() {
 # Set MATE as the default session manager
 set_mate_default() {
     echo "Setting MATE as the default session manager..."
-    sudo update-alternatives --config x-session-manager
+    sudo update-alternatives --config x-session-manager <<< '2'  # Select MATE
+    sudo update-alternatives --config x-session-manager <<< '0'  # Set to auto mode
     mark_step_completed "set_mate_default"
 }
 
