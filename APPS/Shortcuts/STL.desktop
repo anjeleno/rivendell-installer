@@ -1,9 +1,9 @@
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Tramsitter
+Name=STL
 Comment=
-Exec=/home/rd/imports/APPS/transmitter.sh
+Exec=/home/rd/imports/APPS/STL.sh
 Icon=transmission
 Path=
 Terminal=false
