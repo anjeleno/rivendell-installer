@@ -1,7 +1,10 @@
 #!/bin/bash
 
+# Set PATH
+export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+
 # Configuration
-BACKUP_RETENTION=7
+BACKUP_RETENTION=14
 BACKUP_DIR="/home/rd/imports/APPS/sql"
 BACKUP_PREFIX="NIGHTLY_BACKUP"
 LOG_FILE="${BACKUP_DIR}/cron_execution.log"
