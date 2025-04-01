@@ -1,6 +1,6 @@
 #!/bin/bash
 # Rivendell Auto-Install Script
-# Version: 0.23.1
+# Version: 0.23.2
 # Date: 2025-04-01
 # Author: root@linuxconfigs.com
 # Description: This script automates the installation and configuration of Rivendell,
@@ -580,7 +580,6 @@ move_custom_configs() {
     mark_step_completed "move_custom_configs"
 }
 
-# Function to fix Python syntax in pypad.py for Ubuntu 24.04
 fix_pypad_syntax() {
     # Check if the system is running Ubuntu 24.04
     UBUNTU_VERSION=$(lsb_release -rs)
@@ -593,7 +592,7 @@ fix_pypad_syntax() {
         # Check if the file exists
         if [ -f "$PYTHON_FILE" ]; then
             # Replace the deprecated config.readfp() with config.read()
-            sudo sed -i "s/config.readfp(open('/etc/rd.conf'))/config.read('/etc/rd.conf')/" "$PYTHON_FILE"
+            sudo sed -i "s/config\.readfp(open('\/etc\/rd\.conf'))/config.read('\/etc\/rd\.conf')/" "$PYTHON_FILE"
 
             # Verify the change
             if grep -q "config.read('/etc/rd.conf')" "$PYTHON_FILE"; then
