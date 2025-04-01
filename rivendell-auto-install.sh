@@ -1,7 +1,7 @@
 #!/bin/bash
 # Rivendell Auto-Install Script
-# Version: 0.21.2
-# Date: 2025-03-20
+# Version: 0.23.0
+# Date: 2025-04-01
 # Author: root@linuxconfigs.com
 # Description: This script automates the installation and configuration of Rivendell,
 #              MATE Desktop, xRDP, and related broadcasting tools optimized to run
@@ -413,18 +413,40 @@ set_mate_default() {
     mark_step_completed "set_mate_default"
 }
 
-# Install Rivendell
+# Function to determine Ubuntu version and invoke correct Rivendell installer
 install_rivendell() {
-    echo "Installing Rivendell..."
-    wget https://software.paravelsystems.com/ubuntu/dists/jammy/main/install_rivendell.sh || return 1
-    chmod +x install_rivendell.sh || return 1
-    echo "Please choose the installation type:"
-    echo "1) Standalone"
-    echo "2) Server"
-    echo "3) Client"
-    read -p "Enter the number of your choice: " choice
-    sudo ./install_rivendell.sh <<< "$choice" || return 1
-    mark_step_completed "install_rivendell"
+    # Get the Ubuntu version
+    UBUNTU_VERSION=$(lsb_release -rs)
+
+    echo "Detected Ubuntu version: $UBUNTU_VERSION"
+
+    if [[ "$UBUNTU_VERSION" == "22.04" ]]; then
+        echo "Installing Rivendell for Ubuntu 22.04 Jammy..."
+        wget https://software.paravelsystems.com/ubuntu/dists/jammy/main/install_rivendell.sh || return 1
+        chmod +x install_rivendell.sh || return 1
+        echo "Please choose the installation type:"
+        echo "1) Standalone"
+        echo "2) Server"
+        echo "3) Client"
+        read -p "Enter the number of your choice: " choice
+        sudo ./install_rivendell.sh <<< "$choice" || return 1
+        mark_step_completed "install_rivendell"
+    elif [[ "$UBUNTU_VERSION" == "24.04" ]]; then
+        echo "Installing Rivendell for Ubuntu 24.04 Noble..."
+        wget https://software.paravelsystems.com/ubuntu/dists/noble/main/install_rivendell.sh || return 1
+        chmod +x install_rivendell.sh || return 1
+        echo "Please choose the installation type:"
+        echo "1) Standalone"
+        echo "2) Server"
+        echo "3) Client"
+        read -p "Enter the number of your choice: " choice
+        sudo ./install_rivendell.sh <<< "$choice" || return 1
+        mark_step_completed "install_rivendell"
+    else
+        echo "Unsupported Ubuntu version: $UBUNTU_VERSION"
+        echo "This script only supports Ubuntu 22.04 (Jammy) and Ubuntu 24.04 (Noble)."
+        exit 1
+    fi
 }
 
 # Create pypad text file to optionally send RD now and next meta to web, RDS, or external app

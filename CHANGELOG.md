@@ -1,4 +1,8 @@
 # Changelog
+## v0.23.0 - 2025-04-01
+### Changes:
+- **Added check to see which version of Ubuntu is installed and invoke Rivendell installer for correct version.
+# Changelog
 ## v0.21.1 - 2025-03-20
 ### Changes:
 - **Added multiple choice for Rivendell insatallation type.
