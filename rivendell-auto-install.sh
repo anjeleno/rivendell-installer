@@ -1,6 +1,6 @@
 #!/bin/bash
 # Rivendell Auto-Install Script
-# Version: 0.23.0
+# Version: 0.23.1
 # Date: 2025-04-01
 # Author: root@linuxconfigs.com
 # Description: This script automates the installation and configuration of Rivendell,
@@ -580,6 +580,35 @@ move_custom_configs() {
     mark_step_completed "move_custom_configs"
 }
 
+# Function to fix Python syntax in pypad.py for Ubuntu 24.04
+fix_pypad_syntax() {
+    # Check if the system is running Ubuntu 24.04
+    UBUNTU_VERSION=$(lsb_release -rs)
+    if [[ "$UBUNTU_VERSION" == "24.04" ]]; then
+        echo "Detected Ubuntu 24.04. Checking and fixing Python syntax in pypad.py..."
+
+        # Path to the pypad.py file
+        PYTHON_FILE="/usr/lib/python3/dist-packages/rivendellaudio/pypad.py"
+
+        # Check if the file exists
+        if [ -f "$PYTHON_FILE" ]; then
+            # Replace the deprecated config.readfp() with config.read()
+            sudo sed -i "s/config.readfp(open('/etc/rd.conf'))/config.read('/etc/rd.conf')/" "$PYTHON_FILE"
+
+            # Verify the change
+            if grep -q "config.read('/etc/rd.conf')" "$PYTHON_FILE"; then
+                echo "Python syntax in pypad.py fixed successfully."
+            else
+                echo "Failed to fix Python syntax in pypad.py. Please check the file manually."
+            fi
+        else
+            echo "File $PYTHON_FILE not found. Skipping fix."
+        fi
+    else
+        echo "Not running Ubuntu 24.04. Skipping pypad.py fix."
+    fi
+}
+
 # Main script execution
 if [ "$(whoami)" != "rd" ]; then
     # First run as root or default user
@@ -627,6 +656,10 @@ if ! step_completed "fix_qt5"; then fix_qt5; fi
 if ! step_completed "extract_mysql_password"; then extract_mysql_password; fi
 if ! step_completed "update_backup_script"; then update_backup_script; fi
 if ! step_completed "import_sql_backup"; then import_sql_backup; fi
+
+# Fix Python syntax in pypad.py for Ubuntu 24.04
+if ! step_completed "fix_pypad_syntax"; then fix_pypad_syntax; fi
+
 if ! step_completed "enable_firewall"; then enable_firewall; fi
 if ! step_completed "harden_ssh"; then harden_ssh; fi
 if ! step_completed "restore_bashrc"; then restore_bashrc; fi
