@@ -1,23 +1,31 @@
 #!/usr/bin/liquidsoap
 
-#message =
-#  "The Savonet team thanks you for using liquidsoap, " ^
-#  "and we hope you'll enjoy it!"
+set("log.file.path", "/home/rd/logs/soap.log")
 
+# Set sample rate to 48kHz
+set("frame.audio.samplerate", 48000)
 
-set("log.file.path","/home/rd/logs/ls.log")
+# Enable ICY metadata globally
+set("icy.metadata", true)
 
-
-# We're 48k!
-set("frame.audio.samplerate",48000)
 # Grab JACK input
-radio = mksafe(input.jack(id="liquidsoap"))
+radio = input.jack(id="liquidsoap")
 
+# Ensure stream stability
+radio = mksafe(radio)
 
-output.icecast(%mp3(bitrate=192), host = "localhost", port = 8000, password = "hackm3",
-mount = "/192", genre = "Electronic", url = "192",
-name = ":: Station Name :: Your Slogan ::", description = "",
-format = "audio/mpeg", icy_metadata = "true", radio)
+# Icecast output
+output.icecast(
+  %mp3(bitrate=192),
+  host="localhost",
+  port=8000,
+  password="hackm3",
+  mount="/192",
+  genre="Electronic",
+  url="192",
+  name=":: Station Name :: Your Slogan ::",
+  description="",
+  radio
+)
 
-
-# note, the password above is the source password for icecast2.
+# password="hackm3", (must match icecast source password)

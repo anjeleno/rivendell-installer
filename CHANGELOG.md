@@ -1,4 +1,19 @@
 # Changelog
+## v0.23.4 - 2025-04-01
+### Changes:
+- **The script now detects Ubuntu 24.04 and invokes the appropriate Rivendell installer for Noble.
+- **Introduced conditional logic to execute specific steps based on the user's choice of installation type
+- **Refactored Script into Pre-Rivendell and Post-Rivendell Sections
+- **Revised radio.liq (liquidsoap config) for comaptibility with Ubuntu 24.04
+#
+## v0.23.2 - 2025-04-01
+### Changes:
+- **Escaped quotes in the sed commnad relating to fixing deprecated ConfigParser config.readfp() with config.read() for compatibility with Python 3.9+ on Ubuntu 24.04 installs
+#
+## v0.23.1 - 2025-04-01
+### Changes:
+- **Replaced deprecated ConfigParser config.readfp() with config.read() for compatibility with Python 3.9+ on Ubuntu 24.04 installs
+#
 ## v0.23.0 - 2025-04-01
 ### Changes:
 - **Added check to see which version of Ubuntu is installed and invoke Rivendell installer for correct version.

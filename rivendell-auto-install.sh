@@ -1,6 +1,6 @@
 #!/bin/bash
 # Rivendell Auto-Install Script
-# Version: 0.23.2
+# Version: 0.23.4
 # Date: 2025-04-01
 # Author: root@linuxconfigs.com
 # Description: This script automates the installation and configuration of Rivendell,
@@ -413,7 +413,10 @@ set_mate_default() {
     mark_step_completed "set_mate_default"
 }
 
-# Function to determine Ubuntu version and invoke correct Rivendell installer
+# Global variable to track the installation type
+INSTALL_TYPE=""
+
+# Function to determine Ubuntu version and invoke the correct Rivendell installer
 install_rivendell() {
     # Get the Ubuntu version
     UBUNTU_VERSION=$(lsb_release -rs)
@@ -429,6 +432,7 @@ install_rivendell() {
         echo "2) Server"
         echo "3) Client"
         read -p "Enter the number of your choice: " choice
+        INSTALL_TYPE="$choice"
         sudo ./install_rivendell.sh <<< "$choice" || return 1
         mark_step_completed "install_rivendell"
     elif [[ "$UBUNTU_VERSION" == "24.04" ]]; then
@@ -440,6 +444,7 @@ install_rivendell() {
         echo "2) Server"
         echo "3) Client"
         read -p "Enter the number of your choice: " choice
+        INSTALL_TYPE="$choice"
         sudo ./install_rivendell.sh <<< "$choice" || return 1
         mark_step_completed "install_rivendell"
     else
@@ -581,7 +586,7 @@ move_custom_configs() {
 }
 
 fix_pypad_syntax() {
-    # Check if the system is running Ubuntu 24.04
+    # Check if the system is running Ubuntu 24.04, if so, fix pypad syntax. 
     UBUNTU_VERSION=$(lsb_release -rs)
     if [[ "$UBUNTU_VERSION" == "24.04" ]]; then
         echo "Detected Ubuntu 24.04. Checking and fixing Python syntax in pypad.py..."
@@ -635,33 +640,48 @@ ensure_step_dir
 # Always start from setting the timezone after reboot
 if ! step_completed "set_timezone"; then set_timezone; fi
 
-# Continue with the remaining steps
+# Before Rivendell installation
+echo "Executing pre-Rivendell installation steps..."
 if ! step_completed "install_tasksel"; then install_tasksel; fi
 if ! step_completed "install_mate"; then install_mate; fi
 if ! step_completed "install_xrdp"; then install_xrdp; fi
 if ! step_completed "configure_xrdp"; then configure_xrdp; fi
 if ! step_completed "set_mate_default"; then set_mate_default; fi
+
+# Rivendell installation
 if ! step_completed "install_rivendell"; then install_rivendell; fi
-if ! step_completed "touch_pypad"; then touch_pypad; fi
-if ! step_completed "install_broadcasting_tools"; then install_broadcasting_tools; fi
-if ! step_completed "create_directories"; then create_directories; fi
-if ! step_completed "move_apps"; then move_apps; fi
-if ! step_completed "move_shortcuts"; then move_shortcuts; fi
-if ! step_completed "move_custom_configs"; then move_custom_configs; fi
-if ! step_completed "configure_icecast"; then configure_icecast; fi
-if ! step_completed "enable_icecast"; then enable_icecast; fi
-if ! step_completed "disable_pulseaudio"; then disable_pulseaudio; fi
-if ! step_completed "fix_qt5"; then fix_qt5; fi
-if ! step_completed "extract_mysql_password"; then extract_mysql_password; fi
-if ! step_completed "update_backup_script"; then update_backup_script; fi
-if ! step_completed "import_sql_backup"; then import_sql_backup; fi
 
-# Fix Python syntax in pypad.py for Ubuntu 24.04
-if ! step_completed "fix_pypad_syntax"; then fix_pypad_syntax; fi
+# After Rivendell installation
+if [[ "$INSTALL_TYPE" == "3" ]]; then
+    echo "Client installation selected. Only executing client-specific steps..."
+    if ! step_completed "disable_pulseaudio"; then disable_pulseaudio; fi
+    if ! step_completed "fix_qt5"; then fix_qt5; fi
+    if ! step_completed "enable_firewall"; then enable_firewall; fi
+    if ! step_completed "harden_ssh"; then harden_ssh; fi
+    if ! step_completed "restore_bashrc"; then restore_bashrc; fi
+else
+    echo "Standalone or Server installation selected. Executing all steps..."
+    if ! step_completed "touch_pypad"; then touch_pypad; fi
+    if ! step_completed "install_broadcasting_tools"; then install_broadcasting_tools; fi
+    if ! step_completed "create_directories"; then create_directories; fi
+    if ! step_completed "move_apps"; then move_apps; fi
+    if ! step_completed "move_shortcuts"; then move_shortcuts; fi
+    if ! step_completed "move_custom_configs"; then move_custom_configs; fi
+    if ! step_completed "configure_icecast"; then configure_icecast; fi
+    if ! step_completed "enable_icecast"; then enable_icecast; fi
+    if ! step_completed "disable_pulseaudio"; then disable_pulseaudio; fi
+    if ! step_completed "fix_qt5"; then fix_qt5; fi
+    if ! step_completed "extract_mysql_password"; then extract_mysql_password; fi
+    if ! step_completed "update_backup_script"; then update_backup_script; fi
+    if ! step_completed "import_sql_backup"; then import_sql_backup; fi
 
-if ! step_completed "enable_firewall"; then enable_firewall; fi
-if ! step_completed "harden_ssh"; then harden_ssh; fi
-if ! step_completed "restore_bashrc"; then restore_bashrc; fi
+    # Fix Python syntax in pypad.py for Ubuntu 24.04
+    if ! step_completed "fix_pypad_syntax"; then fix_pypad_syntax; fi
+
+    if ! step_completed "enable_firewall"; then enable_firewall; fi
+    if ! step_completed "harden_ssh"; then harden_ssh; fi
+    if ! step_completed "restore_bashrc"; then restore_bashrc; fi
+fi
 
 # Housekeeping
 housekeeping() {
