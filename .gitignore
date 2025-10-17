@@ -30,9 +30,6 @@ dist/
 # Offline bundle caches (large, regenerated)
 installer/offline/packages/
 
-# Optional payload binaries that may be non-redistributable
-installer/offline/payload/APPS/stereo_tool*
-
 # Temporary build workspace
 /tmp/
 *.cache/
