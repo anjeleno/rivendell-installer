@@ -1,3 +1,57 @@
+# Generic OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.tmp
+*~
+.idea/
+.vscode/
+
+# Logs and local state
+*.log
+*.bak
+*.old
+*.retry
+*.pid
+*.seed
+.env
+.env.*
+
+# Build artifacts
+dist/
+*.run
+*.deb
+*.ddeb
+*.tar.gz
+*.tar.xz
+*.zip
+
+# Offline bundle caches (large, regenerated)
+installer/offline/packages/
+
+# Optional payload binaries that may be non-redistributable
+installer/offline/payload/APPS/stereo_tool*
+
+# Temporary build workspace
+/tmp/
+*.cache/
+
+# Python caches (if any helpers/scripts)
+__pycache__/
+*.pyc
+
+# Node/npm (if later tooling added)
+node_modules/
+package-lock.json
+
+# Apt mirror/aptly (if used locally)
+.aptly/
+
+# Local machine-specific files not intended for source control
+*.local
+.ssh/
+.gnupg/
 # Ignore log files
 *.log
 
