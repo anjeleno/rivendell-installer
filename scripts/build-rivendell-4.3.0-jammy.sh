@@ -3,12 +3,22 @@ set -euo pipefail
 trap 'code=$?; echo "[FATAL] build script failed at line $LINENO with exit $code" >&2; exit $code' ERR
 
 cleanup() {
+  # Idempotent chroot unmount; only attempt if actually mounted, deepest first
   echo "[INFO] Cleaning up mounts..." >&2
-  umount -lf "$CHROOT_DIR/output" 2>/dev/null || true
-  umount -lf "$CHROOT_DIR$CCACHE_DIR_CHROOT" 2>/dev/null || true
-  umount -lf "$CHROOT_DIR/proc" 2>/dev/null || true
-  umount -lf "$CHROOT_DIR/sys" 2>/dev/null || true
-  umount -lf "$CHROOT_DIR/dev" 2>/dev/null || true
+  if command -v findmnt >/dev/null 2>&1; then
+    # Collect all mount targets under the chroot and unmount lazily from deepest
+    while read -r mnt; do
+      [[ -z "$mnt" ]] && continue
+      umount -l "$mnt" 2>/dev/null || true
+    done < <(findmnt -R -o TARGET "$CHROOT_DIR" 2>/dev/null | tail -n +2 | sort -r)
+  else
+    # Fallback to individual checks
+    mountpoint -q "$CHROOT_DIR/output" && umount -l "$CHROOT_DIR/output" 2>/dev/null || true
+    mountpoint -q "$CHROOT_DIR$CCACHE_DIR_CHROOT" && umount -l "$CHROOT_DIR$CCACHE_DIR_CHROOT" 2>/dev/null || true
+    mountpoint -q "$CHROOT_DIR/proc" && umount -l "$CHROOT_DIR/proc" 2>/dev/null || true
+    mountpoint -q "$CHROOT_DIR/sys" && umount -l "$CHROOT_DIR/sys" 2>/dev/null || true
+    mountpoint -q "$CHROOT_DIR/dev" && umount -l "$CHROOT_DIR/dev" 2>/dev/null || true
+  fi
 }
 trap cleanup EXIT
 
@@ -64,6 +74,7 @@ trap 'code=$?; echo "[FATAL] chroot build failed at line $LINENO with exit $code
 export DEBIAN_FRONTEND=noninteractive
 PRECHECK="${PRECHECK:-0}"
 RESUME="${RESUME:-0}"
+CHECKDEPS="${CHECKDEPS:-0}"
 
 # Conservative apt options to avoid long stalls
 APT_OPTS=(
@@ -83,10 +94,11 @@ if ! timeout 120s apt-get "${APT_OPTS[@]}" update; then
 fi
 
 # Speed up apt/dpkg and compiles, and ensure core build toolchain and deps
-if [[ "$PRECHECK" == "1" ]]; then
-  echo "[INFO] PRECHECK: Skipping package installs to avoid long operations."
+if [[ "$PRECHECK" == "1" || "$CHECKDEPS" == "1" ]]; then
+  echo "[INFO] Preflight mode (${PRECHECK:+PRECHECK}${CHECKDEPS:+CHECKDEPS}): skipping heavy package installs."
 else
   if ! timeout 900s apt-get "${APT_OPTS[@]}" install -y --no-install-recommends \
+    apt-utils \
     eatmydata ccache pkg-config dpkg-dev \
     git build-essential debhelper devscripts fakeroot \
     rsync \
@@ -107,11 +119,16 @@ else
   fi
 fi
 
-# Quiet locale warnings (optional)
-# Avoid locales install; rely on C.UTF-8 set above
-sed -i 's/^# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen || true
-locale-gen en_US.UTF-8 || true
-update-locale LANG=en_US.UTF-8 || true
+# Quiet locale warnings (optional). Only attempt if files/tools exist.
+if [[ -f /etc/locale.gen ]]; then
+  sed -i 's/^#\s*en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen || true
+fi
+if command -v locale-gen >/dev/null 2>&1; then
+  locale-gen en_US.UTF-8 || true
+fi
+if command -v update-locale >/dev/null 2>&1; then
+  update-locale LANG=en_US.UTF-8 || true
+fi
 
 export CCACHE_DIR="/ccache"
 export CC="ccache gcc"
@@ -126,6 +143,28 @@ cd /build
 echo "[INFO] Cloning Rivendell v4.3.0..."
 git clone --branch v4.3.0 --depth 1 https://github.com/ElvishArtisan/rivendell.git
 cd rivendell
+
+# Optional dependency summary without building
+if [[ "$CHECKDEPS" == "1" ]]; then
+  echo "[INFO] CHECKDEPS mode: installing dpkg-dev (minimal) to run dpkg-checkbuilddeps..."
+  if ! timeout 300s apt-get "${APT_OPTS[@]}" install -y --no-install-recommends dpkg-dev >/dev/null; then
+    echo "[ERROR] Unable to install dpkg-dev for dependency checking." >&2
+    exit 92
+  fi
+  if [[ -f debian/control ]] && command -v dpkg-checkbuilddeps >/dev/null 2>&1; then
+    echo "[INFO] Running dpkg-checkbuilddeps..."
+    if dpkg-checkbuilddeps >/tmp/depcheck.out 2>&1; then
+      echo "[OK] All build-dependencies are satisfied according to debian/control."
+    else
+      echo "[WARN] Unmet build-dependencies reported by dpkg-checkbuilddeps:"
+      cat /tmp/depcheck.out || true
+    fi
+  else
+    echo "[INFO] Cannot run dpkg-checkbuilddeps (missing debian/control or tool)."
+  fi
+  echo "[OK] Deps-check phase complete; exiting as requested."
+  exit 0
+fi
 
 if [[ "$PRECHECK" != "1" ]]; then
   echo "[INFO] Prepare build system..."
@@ -169,14 +208,14 @@ mkdir -p debian/tmp/usr/share/rivendell || true
 touch debian/tmp/usr/share/rivendell/opsguide.pdf || true
 
 if [[ "$PRECHECK" == "1" ]]; then
-  if command -v dpkg-checkbuilddeps >/dev/null 2>&1; then
+  if [[ -f debian/control ]] && command -v dpkg-checkbuilddeps >/dev/null 2>&1; then
     echo "[INFO] Checking build-deps (dpkg-checkbuilddeps)..."
     if ! dpkg-checkbuilddeps; then
       echo "[ERROR] Missing build dependencies according to debian/control. See above output." >&2
       exit 3
     fi
   else
-    echo "[INFO] dpkg-checkbuilddeps not present in PRECHECK; skipping dependency validation."
+    echo "[INFO] Skipping dpkg-checkbuilddeps in PRECHECK (missing debian/control or tool)."
   fi
   echo "[OK] Precheck complete: apt reachable, sources cloned. Ready to build." >&2
   exit 0
@@ -217,12 +256,5 @@ if [[ "${PRECHECK:-0}" == "1" ]]; then
   echo "[INFO] PRECHECK mode enabled: will stop after checking build-deps and preparing sources."
 fi
 chroot "$CHROOT_DIR" /usr/bin/env PRECHECK="${PRECHECK:-0}" /bin/bash /setup-build.sh
-
-echo "[INFO] Cleaning up mounts..."
-umount -lf "$CHROOT_DIR/output" || true
-umount -lf "$CHROOT_DIR$CCACHE_DIR_CHROOT" || true
-umount -lf "$CHROOT_DIR/proc" || true
-umount -lf "$CHROOT_DIR/sys" || true
-umount -lf "$CHROOT_DIR/dev" || true
 
 echo "[DONE] Rivendell 4.3.0 .debs placed in: $OUT_DIR"
