@@ -15,4 +15,3 @@ tzdata
 ufw
 whiptail
 zenity
-EOL

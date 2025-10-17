@@ -44,8 +44,8 @@ cat >"$TMPROOT/etc/apt/sources.list" <<EOF
 deb http://archive.ubuntu.com/ubuntu $series main restricted universe multiverse
 deb http://archive.ubuntu.com/ubuntu $series-updates main restricted universe multiverse
 deb http://security.ubuntu.com/ubuntu $series-security main restricted universe multiverse
-# Paravel Rivendell repository (adjust if needed)
-deb [arch=amd64] https://software.paravelsystems.com/ubuntu $series main
+# Paravel Rivendell repository (adjust if needed). Use trusted=yes inside isolated root to avoid key prompts.
+deb [arch=amd64 trusted=yes] https://software.paravelsystems.com/ubuntu $series main
 EOF
 
 APT_OPTS=(
@@ -58,7 +58,9 @@ APT_OPTS=(
 )
 
 echo "[INFO] Updating APT for $series..."
-apt-get "${APT_OPTS[@]}" update
+if ! apt-get "${APT_OPTS[@]}" update; then
+  echo "[WARN] apt-get update reported errors (likely third-party repo unavailable). Proceeding with available indexes."
+fi
 
 # Try to prefer rivendell 4.3.0 by pinning if multiple versions exist
 mkdir -p "$TMPROOT/etc/apt/preferences.d"
@@ -71,7 +73,7 @@ PREF
 echo "[INFO] Resolving and downloading packages from $LIST_FILE"
 
 # Let apt compute dependencies and download all .debs to the cache
-apt-get "${APT_OPTS[@]}" -y --download-only install $(grep -vE '^(#|\s*$)' "$LIST_FILE") || {
+apt-get "${APT_OPTS[@]}" -y --download-only install $(grep -vE '^(#|\s*$)' "$LIST_FILE" | sed '/^EOL$/d') || {
   echo "[WARN] Initial download attempt failed; check if rivendell $rver is available for $series." >&2
 }
 
