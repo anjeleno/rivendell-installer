@@ -124,6 +124,51 @@ bash installer/offline/build-makeself.sh
 ls -lh dist/
 ```
 
+### Saw "rddbmgr: unable to open database [Access denied …]" during install
+This message can appear while the Rivendell package post-install scripts run, before the installer has completed DB setup. The installer now attempts an early database initialization and re-applies grants later; the warning is typically transient.
+
+If Rivendell keeps crash-looping after the installer finishes, fix grants and initialize the DB manually:
+
+```bash
+# Read DB credentials from /etc/rd.conf
+DB=$(awk -F= '/^\[mySQL\]/{s=1;next}/^\[/{s=0} s&&/^Database=/{print $2}' /etc/rd.conf | tr -d ' \r')
+USER=$(awk -F= '/^\[mySQL\]/{s=1;next}/^\[/{s=0} s&&/^Loginname=/{print $2}' /etc/rd.conf | tr -d ' \r')
+[[ -n "$USER" ]] || USER=$(awk -F= '/^\[mySQL\]/{s=1;next}/^\[/{s=0} s&&/^DbUser=/{print $2}' /etc/rd.conf | tr -d ' \r')
+PASS=$(awk -F= '/^\[mySQL\]/{s=1;next}/^\[/{s=0} s&&/^Password=/{print $2}' /etc/rd.conf | tr -d ' \r')
+[[ -n "$PASS" ]] || PASS=$(awk -F= '/^\[mySQL\]/{s=1;next}/^\[/{s=0} s&&/^DbPassword=/{print $2}' /etc/rd.conf | tr -d ' \r')
+
+# Create user/db and grant privileges for localhost, 127.0.0.1, %, and the hostname
+HN=$(hostname)
+sudo mysql --protocol=socket -uroot <<SQL
+CREATE USER IF NOT EXISTS '${USER}'@'localhost' IDENTIFIED BY '${PASS}';
+CREATE USER IF NOT EXISTS '${USER}'@'127.0.0.1' IDENTIFIED BY '${PASS}';
+CREATE USER IF NOT EXISTS '${USER}'@'%' IDENTIFIED BY '${PASS}';
+CREATE USER IF NOT EXISTS '${USER}'@'${HN}' IDENTIFIED BY '${PASS}';
+ALTER USER '${USER}'@'localhost' IDENTIFIED BY '${PASS}';
+ALTER USER '${USER}'@'127.0.0.1' IDENTIFIED BY '${PASS}';
+ALTER USER '${USER}'@'%' IDENTIFIED BY '${PASS}';
+ALTER USER '${USER}'@'${HN}' IDENTIFIED BY '${PASS}';
+CREATE DATABASE IF NOT EXISTS \`${DB}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+GRANT ALL PRIVILEGES ON \`${DB}\`.* TO '${USER}'@'localhost';
+GRANT ALL PRIVILEGES ON \`${DB}\`.* TO '${USER}'@'127.0.0.1';
+GRANT ALL PRIVILEGES ON \`${DB}\`.* TO '${USER}'@'%';
+GRANT ALL PRIVILEGES ON \`${DB}\`.* TO '${USER}'@'${HN}';
+FLUSH PRIVILEGES;
+SQL
+
+# Initialize the Rivendell DB if empty, then restart service
+sudo rddbmgr --create || true
+sudo systemctl restart rivendell
+sudo systemctl status --no-pager -l rivendell
+```
+
+If you use the provided custom schema, you can also import it directly:
+
+```bash
+sudo mysql --protocol=socket -uroot "$DB" < /usr/share/rivendell-cloud/APPS/RDDB_v430_Cloud.sql
+sudo systemctl restart rivendell
+```
+
 ## Notes
 - The installer is designed to be idempotent; re-running should patch missing bits without breaking an existing setup.
 - If you encounter LFS bandwidth limits on GitHub, consider fetching the artifact from a GitHub Release or alternative mirror.
