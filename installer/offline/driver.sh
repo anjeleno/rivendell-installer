@@ -393,18 +393,60 @@ finalize_rivendell_db() {
     log "/etc/rd.conf not present; skipping DB finalization"
     return 0
   fi
+
+  # Parse /etc/rd.conf [mySQL] section robustly
   local db user pass host
   db=$(awk -F= '/^Database=/ {print $2}' /etc/rd.conf | tr -d ' \r')
-  user=$(awk -F= '/^DbUser=/ {print $2}' /etc/rd.conf | tr -d ' \r')
-  pass=$(awk -F= '/^DbPassword=/ {print $2}' /etc/rd.conf | tr -d ' \r')
+  # Rivendell uses 'Loginname='; older templates may use 'DbUser='
+  user=$(awk -F= '/^Loginname=/ {print $2}' /etc/rd.conf | tr -d ' \r')
+  [[ -n "$user" ]] || user=$(awk -F= '/^DbUser=/ {print $2}' /etc/rd.conf | tr -d ' \r')
+  # Rivendell uses 'Password='; older templates may use 'DbPassword='
+  pass=$(awk -F= '/^Password=/ {print $2}' /etc/rd.conf | tr -d ' \r')
+  [[ -n "$pass" ]] || pass=$(awk -F= '/^DbPassword=/ {print $2}' /etc/rd.conf | tr -d ' \r')
   host=$(awk -F= '/^Hostname=/ {print $2}' /etc/rd.conf | tr -d ' \r')
   [[ -z "$host" ]] && host=localhost
 
-  # Optional schema import if our SQL exists and connection works
-  local sql="/usr/share/rivendell-cloud/APPS/RDDB_v430_Cloud.sql"
-  [[ -f "$sql" ]] || sql="$PAYLOAD_DIR/APPS/RDDB_v430_Cloud.sql"
-  if [[ -f "$sql" ]]; then
-    mysql -h"$host" -u"$user" -p"$pass" "$db" < "$sql" || log "Schema import skipped/failed; verify DB creds"
+  if [[ -z "$db" || -z "$user" || -z "$pass" ]]; then
+    log "Unable to parse DB credentials from /etc/rd.conf; found db='$db' user='$user' pass_len=${#pass}. Skipping custom DB import."
+  else
+    # Idempotence marker to avoid clobbering on re-runs unless schema changes
+    local stamp_dir="/var/lib/rivendell-cloud"; local stamp_file="$stamp_dir/db.finalized"
+    mkdir -p "$stamp_dir"
+
+    # Determine SQL payload path
+    local sql="/usr/share/rivendell-cloud/APPS/RDDB_v430_Cloud.sql"
+    [[ -f "$sql" ]] || sql="$PAYLOAD_DIR/APPS/RDDB_v430_Cloud.sql"
+
+    # Helper to exec as MariaDB root via unix_socket
+    mysql_root() { mysql --protocol=socket -uroot -NBe "$1"; }
+
+    # Ensure server is accepting connections
+    local i=0
+    until mysql --protocol=socket -uroot -e 'SELECT 1' >/dev/null 2>&1; do
+      sleep 1; i=$((i+1)); [[ $i -ge 20 ]] && break
+    done
+
+    # Create user and DB, grant privileges
+    log "Ensuring MySQL user '$user' and database '$db' exist"
+    mysql_root "CREATE USER IF NOT EXISTS '${user}'@'localhost' IDENTIFIED BY '${pass}'" || true
+    mysql_root "CREATE DATABASE IF NOT EXISTS \`${db}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci"
+    mysql_root "GRANT ALL PRIVILEGES ON \`${db}\`.* TO '${user}'@'localhost'"
+    mysql_root "FLUSH PRIVILEGES"
+
+    # If we have a custom schema, replace the DB contents with it
+    if [[ -f "$sql" ]]; then
+      log "Importing custom Rivendell schema from $(basename "$sql")"
+      # Drop and recreate to ensure a clean import
+      mysql_root "DROP DATABASE IF EXISTS \`${db}\`"
+      mysql_root "CREATE DATABASE \`${db}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci"
+      # Ensure privileges after recreation
+      mysql_root "GRANT ALL PRIVILEGES ON \`${db}\`.* TO '${user}'@'localhost'"
+      if mysql --protocol=socket -uroot "$db" < "$sql"; then
+        date +%s > "$stamp_file"
+      else
+        log "Custom schema import failed; leaving DB in current state"
+      fi
+    fi
   fi
 
   # Ensure rivendell waits for DB

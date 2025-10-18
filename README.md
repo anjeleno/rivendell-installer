@@ -22,9 +22,9 @@ git lfs install
 Clone the repo so the offline installer artifact is fetched correctly via LFS:
 
 ```bash
-git clone https://github.com/anjeleno/rivendell-installer.git
-cd rivendell-installer
-git lfs pull  # usually automatic, this forces LFS files to download
+git clone https://github.com/anjeleno/rivendell-installer.git ; cd rivendell-installer
+git lfs pull  
+# usually automatic, this forces LFS files to download
 ```
 
 Verify the installer is present and not a small pointer file:
@@ -45,7 +45,7 @@ dist/rivendell-installer-0.1.1-YYYYMMDD.run
 Run as root (or with sudo). The installer detects your series (22.04/24.04) and installs from the bundled .debs.
 
 ```bash
-sudo ./dist/rivendell-installer-0.1.1-20251017.run
+sudo ./dist/rivendell-installer-0.1.1-20251018.run
 ```
 
 The installer will prompt for:
