@@ -190,6 +190,32 @@ install_xrdp_desktop() {
   systemctl restart xrdp || true
 }
 
+# For Client installs: prompt for remote DB connection and write to /etc/rd.conf
+configure_client_rd_conf() {
+  # Only run if Client and rd.conf exists
+  [[ "$install_type" == "Client" ]] || return 0
+  [[ -f /etc/rd.conf ]] || return 0
+  local host db user pass
+  host=$(ask_input "MySQL server hostname or IP" "localhost" || echo "localhost")
+  db=$(ask_input "Database name" "Rivendell" || echo "Rivendell")
+  user=$(ask_input "Database username" "rduser" || echo "rduser")
+  pass=$(ask_password "Database password (input hidden)" || true)
+  # Update keys within [mySQL]
+  tmp=$(mktemp)
+  awk -v host="$host" -v db="$db" -v user="$user" -v pass="$pass" '
+    BEGIN{section=""}
+    /^\[/ {section=$0}
+    { line=$0 }
+    section=="[mySQL]" && /^Hostname=/ { sub(/^Hostname=.*/, "Hostname="host, line) }
+    section=="[mySQL]" && /^(Loginname=|DbUser=)/ { sub(/^(Loginname=|DbUser=).*/, "Loginname="user, line) }
+    section=="[mySQL]" && /^(Password=|DbPassword=)/ { sub(/^(Password=|DbPassword=).*/, "Password="pass, line) }
+    section=="[mySQL]" && /^Database=/ { sub(/^Database=.*/, "Database="db, line) }
+    { print line }
+  ' /etc/rd.conf > "$tmp"
+  install -m 644 "$tmp" /etc/rd.conf && rm -f "$tmp"
+  systemctl restart rivendell || true
+}
+
 suppress_mate_power_manager() {
   # Disable mate-power-manager autostart to avoid xRDP crash dialog
   local sys_autostart="/etc/xdg/autostart/mate-power-manager.desktop"
@@ -291,6 +317,84 @@ configure_icecast() {
     systemctl enable icecast2 || true
     systemctl restart icecast2 || true
   fi
+}
+
+# Configure AudioStore for Standalone/Server (local /var/snd) and Client (NFS mount)
+configure_audiostore() {
+  # Ensure mountpoint exists
+  install -d -m 775 /var/snd
+  chown rd:rd /var/snd 2>/dev/null || true
+
+  # Helper to update [AudioStore] in /etc/rd.conf
+  update_rdconf_audiostore() {
+    local src="$1"; local mtype="$2"; local mopts="$3"
+    [[ -f /etc/rd.conf ]] || return 0
+    # If [AudioStore] section missing, append it
+    if ! grep -q '^\[AudioStore\]' /etc/rd.conf; then
+      cat >> /etc/rd.conf <<EOF
+[AudioStore]
+MountSource=${src}
+MountType=${mtype}
+MountOptions=${mopts}
+EOF
+      return 0
+    fi
+    local tmp
+    tmp=$(mktemp)
+    awk -v src="$src" -v mtype="$mtype" -v mopts="$mopts" '
+      BEGIN{section=""}
+      /^\[/ {section=$0}
+      { line=$0 }
+      section=="[AudioStore]" && /^MountSource=/ { sub(/^MountSource=.*/, "MountSource="src, line) }
+      section=="[AudioStore]" && /^MountType=/ { sub(/^MountType=.*/, "MountType="mtype, line) }
+      section=="[AudioStore]" && /^MountOptions=/ { sub(/^MountOptions=.*/, "MountOptions="mopts, line) }
+      { print line }
+    ' /etc/rd.conf > "$tmp"
+    install -m 644 "$tmp" /etc/rd.conf && rm -f "$tmp"
+  }
+
+  case "$install_type" in
+    Standalone)
+      # Local audiostore only
+      log "Configuring local AudioStore at /var/snd (Standalone)"
+      update_rdconf_audiostore "/var/snd" "" "defaults"
+      ;;
+    Server)
+      log "Configuring local AudioStore at /var/snd and exporting via NFS (Server)"
+      # Local path
+      update_rdconf_audiostore "/var/snd" "" "defaults"
+      # NFS server
+      apt_install nfs-kernel-server || true
+      # Export /var/snd with safe defaults
+      if ! grep -qE '^/var/snd\s' /etc/exports 2>/dev/null; then
+        echo "/var/snd *(rw,sync,no_subtree_check)" >> /etc/exports
+      fi
+      exportfs -ra || true
+      systemctl enable --now nfs-server || systemctl enable --now nfs-kernel-server || true
+      ;;
+    Client)
+      # Prompt for NFS server (default to DB host if present)
+      local dbhost
+      dbhost=$(awk -F= '/^\[mySQL\]/{s=1;next}/^\[/{s=0} s&&/^Hostname=/{print $2}' /etc/rd.conf 2>/dev/null | tr -d ' \r' || true)
+      local nfs_srv
+      nfs_srv=$(ask_input "Enter NFS server for AudioStore" "${dbhost:-server}" || echo "${dbhost:-server}")
+      log "Configuring NFS AudioStore from ${nfs_srv}:/var/snd"
+      apt_install nfs-common || true
+      # Add fstab line idempotently
+      local fstab_line
+      fstab_line="${nfs_srv}:/var/snd /var/snd nfs defaults,_netdev 0 0"
+      if grep -qE '^[^#].*\s/var/snd\s' /etc/fstab; then
+        sed -i "s|^[^#].*\s/var/snd\s.*|$fstab_line|" /etc/fstab
+      else
+        echo "$fstab_line" >> /etc/fstab
+      fi
+      # Try mounting now
+      mkdir -p /var/snd
+      mount -a || true
+      # Update rd.conf [AudioStore]
+      update_rdconf_audiostore "${nfs_srv}:/var/snd" "nfs" "defaults,_netdev"
+      ;;
+  esac
 }
 
 web_meta_file() {
@@ -441,6 +545,21 @@ finalize_rivendell_db() {
   mysql_root "GRANT ALL PRIVILEGES ON \`${db}\`.* TO '${user}'@'127.0.0.1'"
   mysql_root "FLUSH PRIVILEGES"
 
+    # Optionally initialize default Rivendell schema first (for completeness)
+    # Detect if DB is empty (no tables). If so, try rddbmgr --create non-interactively.
+    local tbl_count
+    tbl_count=$(mysql --protocol=socket -uroot -NBe "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='${db}'" 2>/dev/null || echo 0)
+    if [[ "${tbl_count}" == "0" ]]; then
+      if have_cmd rddbmgr; then
+        log "Database '${db}' is empty; attempting initial create via rddbmgr"
+        if rddbmgr --create >/dev/null 2>&1; then
+          log "rddbmgr create completed"
+        else
+          log "rddbmgr create failed or not available; proceeding without it"
+        fi
+      fi
+    fi
+
     # If we have a custom schema, replace the DB contents with it
     if [[ -f "$sql" ]]; then
       log "Importing custom Rivendell schema from $(basename "$sql")"
@@ -479,6 +598,16 @@ firewall_and_ssh() {
     ufw allow 8000/tcp || true
     ufw allow 80/tcp || true
     ufw allow 443/tcp || true
+    # NFS ports for Server installs
+    if [[ "$install_type" == "Server" ]]; then
+      ufw allow 111/tcp || true
+      ufw allow 111/udp || true
+      ufw allow 2049/tcp || true
+      ufw allow 2049/udp || true
+      # Mountd often uses 20048; open it as well
+      ufw allow 20048/tcp || true
+      ufw allow 20048/udp || true
+    fi
     ufw --force enable || true
   fi
   if $harden_ssh; then
@@ -531,6 +660,8 @@ qt5_xcb_fix
 setup_xauth_autolink
 suppress_mate_power_manager
 firewall_and_ssh
+if [[ "$install_type" == "Client" ]]; then configure_client_rd_conf; fi
+configure_audiostore
 finalize_rivendell_db
 pin_rivendell
 post_notes
