@@ -19,7 +19,10 @@ Thumbs.db
 .env.*
 
 # Build artifacts
-dist/
+# Keep dist/ in repo to distribute the offline installer, but ignore other large artifacts by default.
+!dist/
+dist/*
+!dist/*.run
 *.run
 *.deb
 *.ddeb
