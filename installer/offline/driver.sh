@@ -47,6 +47,16 @@ ask_input() {
   fi
 }
 
+# Hidden password prompt
+ask_password() {
+  local prompt="$1"
+  if $use_gui; then
+    zenity --entry --title "Password" --text "$prompt" --hide-text
+  else
+    whiptail --passwordbox "$prompt" 10 60 3>&1 1>&2 2>&3
+  fi
+}
+
 require_root() {
   if [[ $EUID -ne 0 ]]; then
     echo "This installer must be run as root (or via sudo)." >&2
@@ -119,7 +129,20 @@ ensure_user() {
   if ! id -u rd >/dev/null 2>&1; then
     log "Creating user rd"
     useradd -m -s /bin/bash rd
-    passwd -l rd || true
+    # Prompt and set a password for rd
+    local pw1 pw2 attempts=0
+    while (( attempts < 3 )); do
+      pw1=$(ask_password "Set password for user 'rd'") || pw1=""
+      pw2=$(ask_password "Confirm password for user 'rd'") || pw2=""
+      if [[ -n "$pw1" && "$pw1" == "$pw2" ]]; then
+        echo "rd:$pw1" | chpasswd && break
+      fi
+      attempts=$((attempts+1))
+      log "Passwords did not match or were empty. Try again ($attempts/3)."
+    done
+    if (( attempts == 3 )); then
+      log "Password for rd not set (skipped after 3 attempts). You can set it later with 'passwd rd'."
+    fi
   fi
   usermod -aG sudo,audio,pulse,pulse-access,adm,cdrom,video rd || true
   mkdir -p /home/rd /home/rd/imports /home/rd/logs
@@ -159,12 +182,27 @@ install_media_apps() {
 
 install_xrdp_desktop() {
   log "Installing xrdp and optional desktop"
-  apt_install xrdp
+  apt_install xrdp dbus-x11
   if $install_mate; then
     apt_install ubuntu-mate-desktop || apt_install mate-desktop-environment
   fi
   systemctl enable xrdp || true
   systemctl restart xrdp || true
+}
+
+suppress_mate_power_manager() {
+  # Disable mate-power-manager autostart to avoid xRDP crash dialog
+  local sys_autostart="/etc/xdg/autostart/mate-power-manager.desktop"
+  [[ -f "$sys_autostart" ]] || return 0
+  for u in "$target_user" rd; do
+    if id -u "$u" >/dev/null 2>&1; then
+      local autostart="/home/$u/.config/autostart"
+      mkdir -p "$autostart"
+      install -m 644 "$sys_autostart" "$autostart/mate-power-manager.desktop" 2>/dev/null || true
+      echo "Hidden=true" >> "$autostart/mate-power-manager.desktop"
+      chown -R "$u:$u" "/home/$u/.config"
+    fi
+  done
 }
 
 deploy_apps_payload() {
@@ -185,7 +223,7 @@ deploy_apps_payload() {
 
   # Ensure executability for scripts and shortcuts in APPS
   if [[ -d "$rddst" ]]; then
-    find "$rddst" -type f \( -name "*.sh" -o -name "*.desktop" -o -name "stl.sh" -o -name "autologgen.sh" -o -name "reconcile-traffic.sh" -o -name "stereo_tool_gui_jack_64_1030" \) -exec chmod +x {} + 2>/dev/null || true
+    find "$rddst" -type f \( -name "*.sh" -o -name "*.desktop" -o -name "*.liq" -o -name "stl.sh" -o -name "autologgen.sh" -o -name "reconcile-traffic.sh" -o -name "stereo_tool_gui_jack_64_1030" \) -exec chmod +x {} + 2>/dev/null || true
     # Rewrite any legacy/system paths within scripts to rd home
     while IFS= read -r -d '' f; do
       sed -i 's|/usr/share/rivendell-cloud/APPS|/home/rd/imports/APPS|g' "$f"
@@ -232,6 +270,14 @@ deploy_apps_payload() {
   if [[ -d "$rddst/configs" ]]; then
     rsync -a "$rddst/configs/" "/home/rd/.config/"
     chown -R rd:rd "/home/rd/.config"
+    # Place specific configs where apps expect them
+    mkdir -p "/home/rd/.config/vlc" "/home/rd/.config/rncbc.org"
+    [[ -f "$rddst/configs/vlcrc" ]] && install -m 644 "$rddst/configs/vlcrc" "/home/rd/.config/vlc/vlcrc"
+    [[ -f "$rddst/configs/vlc-qt-interface.conf" ]] && install -m 644 "$rddst/configs/vlc-qt-interface.conf" "/home/rd/.config/vlc/vlc-qt-interface.conf"
+    [[ -f "$rddst/configs/QjackCtl.conf" ]] && install -m 644 "$rddst/configs/QjackCtl.conf" "/home/rd/.config/rncbc.org/QjackCtl.conf"
+    [[ -f "$rddst/configs/.stereo_tool_gui_jack_64_1030.rc" ]] && install -m 644 "$rddst/configs/.stereo_tool_gui_jack_64_1030.rc" "/home/rd/.stereo_tool_gui_jack_64_1030.rc"
+    chown -R rd:rd "/home/rd/.config"
+    chown rd:rd "/home/rd/.stereo_tool_gui_jack_64_1030.rc" 2>/dev/null || true
   fi
 }
 
@@ -268,6 +314,31 @@ qt5_xcb_fix() {
       chown "$u:$u" "$xrc" || true
     fi
   done
+
+  # Share Xauthority so root-run Qt apps can display in xRDP
+  if [[ -f "/home/rd/.Xauthority" ]]; then
+    ln -sfn "/home/rd/.Xauthority" "/root/.Xauthority"
+  fi
+}
+
+configure_rd_conf() {
+  # Prepare /etc/rd.conf with DB credentials prior to Rivendell install
+  local db="Rivendell" user="rduser" pass="hackme" host="localhost"
+  local u_in d_in p_in
+  u_in=$(ask_input "Database username" "$user" || echo "$user")
+  d_in=$(ask_input "Database name" "$db" || echo "$db")
+  p_in=$(ask_password "Database password (leave blank to keep default)" || true)
+  [[ -n "$u_in" ]] && user="$u_in"
+  [[ -n "$d_in" ]] && db="$d_in"
+  [[ -n "$p_in" ]] && pass="$p_in"
+  cat >/etc/rd.conf <<EOF
+[mySQL]
+Driver=QMYSQL
+DbUser=$user
+DbPassword=$pass
+Database=$db
+Hostname=$host
+EOF
 }
 
 install_and_init_db() {
@@ -277,10 +348,17 @@ install_and_init_db() {
     *) return 0;;
   esac
 
+  # Prefer system copy of SQL, fallback to payload
   local sql="/usr/share/rivendell-cloud/APPS/RDDB_v430_Cloud.sql"
+  [[ -f "$sql" ]] || sql="$PAYLOAD_DIR/APPS/RDDB_v430_Cloud.sql"
   log "Ensuring MariaDB server and Rivendell database"
   apt_install mariadb-server mariadb-client || true
   systemctl enable --now mariadb || true
+  # Wait for server to be ready
+  local i=0
+  until mysqladmin ping >/dev/null 2>&1; do
+    sleep 1; i=$((i+1)); [[ $i -ge 20 ]] && break
+  done
 
   # Desired defaults
   local db="Rivendell" user="rduser" pass="hackme" host="localhost"
@@ -328,12 +406,28 @@ firewall_and_ssh() {
     apt_install ufw || true
     ufw allow OpenSSH || true
     ufw allow 3389/tcp || true
+    ufw allow 8000/tcp || true
     ufw allow 80/tcp || true
     ufw allow 443/tcp || true
     ufw --force enable || true
   fi
   if $harden_ssh; then
     log "Hardening SSH"
+    # Skip hardening if no SSH keys present for target_user, rd, or root
+    local has_keys=false
+    for u in "$target_user" rd root; do
+      local ak
+      if [[ "$u" == "root" ]]; then
+        ak="/root/.ssh/authorized_keys"
+      else
+        ak="/home/$u/.ssh/authorized_keys"
+      fi
+      if [[ -s "$ak" ]]; then has_keys=true; break; fi
+    done
+    if [[ "$has_keys" != true ]]; then
+      log "No authorized_keys found. Skipping SSH hardening to prevent lockout."
+      return 0
+    fi
     install -Dm600 /etc/ssh/sshd_config /etc/ssh/sshd_config.bak.$(date +%Y%m%d%H%M%S)
     sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
     sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
@@ -356,14 +450,16 @@ set_hostname
 set_timezone
 ensure_user
 configure_limits
+deploy_apps_payload
+configure_rd_conf
+install_and_init_db
 install_local_debs
 install_media_apps
 install_xrdp_desktop
-deploy_apps_payload
 configure_icecast
 web_meta_file
 qt5_xcb_fix
-install_and_init_db
+suppress_mate_power_manager
 firewall_and_ssh
 pin_rivendell
 post_notes
