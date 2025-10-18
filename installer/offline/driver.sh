@@ -484,6 +484,31 @@ ensure_mariadb() {
   done
 }
 
+# Helper to (re)grant MySQL privileges for multiple host forms
+mysql_grant_matrix() {
+  local db="$1" user="$2" pass="$3"
+  local mysql_root
+  mysql_root() { mysql --protocol=socket -uroot -NBe "$1"; }
+  local hname
+  hname=$(hostname 2>/dev/null || echo localhost)
+  # Ensure users exist for common host forms
+  mysql_root "CREATE USER IF NOT EXISTS '${user}'@'localhost' IDENTIFIED BY '${pass}'" || true
+  mysql_root "CREATE USER IF NOT EXISTS '${user}'@'127.0.0.1' IDENTIFIED BY '${pass}'" || true
+  mysql_root "CREATE USER IF NOT EXISTS '${user}'@'%' IDENTIFIED BY '${pass}'" || true
+  mysql_root "CREATE USER IF NOT EXISTS '${user}'@'${hname}' IDENTIFIED BY '${pass}'" || true
+  # Refresh passwords
+  mysql_root "ALTER USER '${user}'@'localhost' IDENTIFIED BY '${pass}'" || true
+  mysql_root "ALTER USER '${user}'@'127.0.0.1' IDENTIFIED BY '${pass}'" || true
+  mysql_root "ALTER USER '${user}'@'%' IDENTIFIED BY '${pass}'" || true
+  mysql_root "ALTER USER '${user}'@'${hname}' IDENTIFIED BY '${pass}'" || true
+  # Ensure DB exists and grant
+  mysql_root "CREATE DATABASE IF NOT EXISTS \`${db}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci"
+  for host in localhost '127.0.0.1' '%' "${hname}"; do
+    mysql_root "GRANT ALL PRIVILEGES ON \`${db}\`.* TO '${user}'@'${host}'"
+  done
+  mysql_root "FLUSH PRIVILEGES"
+}
+
 # Create a minimal /etc/rd.conf and MySQL user/db BEFORE Rivendell packages
 # so that any package-time rddbmgr calls succeed.
 preseed_rd_conf_and_mysql() {
@@ -511,18 +536,40 @@ EOF
 
   # Create MySQL user/db up-front to satisfy any early rddbmgr calls
   log "Pre-creating MySQL user '${user}' and database '${db}'"
-  local mysql_root
-  mysql_root() { mysql --protocol=socket -uroot -NBe "$1"; }
   # Wait for root socket access
   local i=0; until mysql --protocol=socket -uroot -e 'SELECT 1' >/dev/null 2>&1; do sleep 1; i=$((i+1)); [[ $i -ge 20 ]] && break; done
-  mysql_root "CREATE USER IF NOT EXISTS '${user}'@'localhost' IDENTIFIED BY '${pass}'" || true
-  mysql_root "CREATE USER IF NOT EXISTS '${user}'@'127.0.0.1' IDENTIFIED BY '${pass}'" || true
-  mysql_root "ALTER USER '${user}'@'localhost' IDENTIFIED BY '${pass}'" || true
-  mysql_root "ALTER USER '${user}'@'127.0.0.1' IDENTIFIED BY '${pass}'" || true
-  mysql_root "CREATE DATABASE IF NOT EXISTS \`${db}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci"
-  mysql_root "GRANT ALL PRIVILEGES ON \`${db}\`.* TO '${user}'@'localhost'"
-  mysql_root "GRANT ALL PRIVILEGES ON \`${db}\`.* TO '${user}'@'127.0.0.1'"
-  mysql_root "FLUSH PRIVILEGES"
+  mysql_grant_matrix "$db" "$user" "$pass"
+}
+
+# After packages are installed, try an initial DB create via rddbmgr
+initial_rivendell_db_create() {
+  case "$install_type" in
+    Standalone|Server) :;;
+    *) return 0;;
+  esac
+  if ! have_cmd rddbmgr; then return 0; fi
+  if [[ ! -f /etc/rd.conf ]]; then return 0; fi
+  log "Attempting initial Rivendell DB create via rddbmgr"
+  systemctl stop rivendell || true
+  if rddbmgr --create >/dev/null 2>&1; then
+    log "rddbmgr --create succeeded"
+    return 0
+  fi
+  # If failed, reinforce grants and retry once
+  local db user pass
+  db=$(awk -F= '/^\[mySQL\]/{s=1;next}/^\[/{s=0} s&&/^Database=/{print $2}' /etc/rd.conf | tr -d ' \r')
+  user=$(awk -F= '/^\[mySQL\]/{s=1;next}/^\[/{s=0} s&&/^Loginname=/{print $2}' /etc/rd.conf | tr -d ' \r')
+  [[ -n "$user" ]] || user=$(awk -F= '/^\[mySQL\]/{s=1;next}/^\[/{s=0} s&&/^DbUser=/{print $2}' /etc/rd.conf | tr -d ' \r')
+  pass=$(awk -F= '/^\[mySQL\]/{s=1;next}/^\[/{s=0} s&&/^Password=/{print $2}' /etc/rd.conf | tr -d ' \r')
+  [[ -n "$pass" ]] || pass=$(awk -F= '/^\[mySQL\]/{s=1;next}/^\[/{s=0} s&&/^DbPassword=/{print $2}' /etc/rd.conf | tr -d ' \r')
+  if [[ -n "$db" && -n "$user" && -n "$pass" ]]; then
+    mysql_grant_matrix "$db" "$user" "$pass"
+    if rddbmgr --create >/dev/null 2>&1; then
+      log "rddbmgr --create succeeded after grant reinforcement"
+    else
+      log "rddbmgr --create still failing; will continue with finalize and custom import"
+    fi
+  fi
 }
 
 # After Rivendell installs and generates /etc/rd.conf, finalize DB tasks
@@ -575,16 +622,9 @@ finalize_rivendell_db() {
   # Stop rivendell while altering DB
   systemctl stop rivendell || true
 
-  # Create user and DB, grant privileges
+  # Create user and DB, grant privileges across common host forms
   log "Ensuring MySQL user '$user' and database '$db' exist"
-  mysql_root "CREATE USER IF NOT EXISTS '${user}'@'localhost' IDENTIFIED BY '${pass}'" || true
-  mysql_root "CREATE USER IF NOT EXISTS '${user}'@'127.0.0.1' IDENTIFIED BY '${pass}'" || true
-  mysql_root "ALTER USER '${user}'@'localhost' IDENTIFIED BY '${pass}'" || true
-  mysql_root "ALTER USER '${user}'@'127.0.0.1' IDENTIFIED BY '${pass}'" || true
-  mysql_root "CREATE DATABASE IF NOT EXISTS \`${db}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci"
-  mysql_root "GRANT ALL PRIVILEGES ON \`${db}\`.* TO '${user}'@'localhost'"
-  mysql_root "GRANT ALL PRIVILEGES ON \`${db}\`.* TO '${user}'@'127.0.0.1'"
-  mysql_root "FLUSH PRIVILEGES"
+  mysql_grant_matrix "$db" "$user" "$pass"
 
     # Optionally initialize default Rivendell schema first (for completeness)
     # Detect if DB is empty (no tables). If so, try rddbmgr --create non-interactively.
@@ -607,10 +647,8 @@ finalize_rivendell_db() {
       # Drop and recreate to ensure a clean import
       mysql_root "DROP DATABASE IF EXISTS \`${db}\`"
       mysql_root "CREATE DATABASE \`${db}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci"
-      # Ensure privileges after recreation
-      mysql_root "GRANT ALL PRIVILEGES ON \`${db}\`.* TO '${user}'@'localhost'"
-      mysql_root "GRANT ALL PRIVILEGES ON \`${db}\`.* TO '${user}'@'127.0.0.1'"
-      mysql_root "FLUSH PRIVILEGES"
+      # Ensure privileges after recreation across all relevant host variants
+      mysql_grant_matrix "$db" "$user" "$pass"
       if mysql --protocol=socket -uroot "$db" < "$sql"; then
         date +%s > "$stamp_file"
       else
@@ -711,6 +749,7 @@ configure_limits
 ensure_mariadb
 preseed_rd_conf_and_mysql
 install_local_debs
+initial_rivendell_db_create
 install_media_apps
 install_xrdp_desktop
 deploy_apps_payload
