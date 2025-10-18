@@ -12,14 +12,14 @@ if ! command -v makeself >/dev/null 2>&1; then
   exit 1
 fi
 
-VERSION="0.1.0"
+VERSION="0.1.1"
 DATE="$(date +%Y%m%d)"
-OUT="$DIST_DIR/rivendell-cloud-installer-$VERSION-$DATE.run"
+OUT="$DIST_DIR/rivendell-installer-$VERSION-$DATE.run"
 
 makeself --gzip \
   "$OFFLINE_DIR" \
   "$OUT" \
-  "Rivendell Cloud Offline Installer" \
+  "Rivendell Offline Installer" \
   bash ./driver.sh
 
 echo "Created $OUT"

@@ -1,4 +1,4 @@
-# rivendell-cloud
+# rivendell-installer
 Automate Rivendell Installation with custom configuration on a VPS
 
 ## Quick start
@@ -13,8 +13,7 @@ This repository provides an offline, single-file installer for Rivendell 4.3.0 t
 Install prerequisites on Ubuntu:
 
 ```bash
-sudo apt update
-sudo apt install -y git git-lfs
+sudo apt update && sudo apt install -y git git-lfs
 git lfs install
 ```
 
@@ -38,7 +37,7 @@ ls -lh dist/
 You should see a ~20–35 MB file like:
 
 ```
-dist/rivendell-cloud-installer-0.1.0-YYYYMMDD.run
+dist/rivendell-installer-0.1.1-YYYYMMDD.run
 ```
 
 ### 3) Run the offline installer
@@ -46,7 +45,7 @@ dist/rivendell-cloud-installer-0.1.0-YYYYMMDD.run
 Run as root (or with sudo). The installer detects your series (22.04/24.04) and installs from the bundled .debs.
 
 ```bash
-sudo ./dist/rivendell-cloud-installer-0.1.0-20251017.run
+sudo ./dist/rivendell-installer-0.1.1-20251017.run
 ```
 
 The installer will prompt for:
@@ -62,7 +61,7 @@ It will then:
 - Create or prepare user (creates `rd` if running as root with no sudo user)
 - Configure realtime/memlock limits
 - Install xRDP and enable it
-- Deploy APPS payload to `/usr/share/rivendell-cloud` and user Desktop/configs
+- Deploy APPS payload to `/usr/share/rivendell-cloud` (internal cache) and rd's home
 - Configure Icecast (enable service)
 - Create `/var/www/html/meta.txt` (owned by `pypad` if present)
 - Apply xRDP Qt5/XCB fix by linking `.Xauthority`

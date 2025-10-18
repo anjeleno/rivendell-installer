@@ -1,4 +1,4 @@
-Rivendell Cloud Installer
+Rivendell Installer
 =========================
 
 This repo now includes two delivery paths for installing Rivendell 4.3.0 with your custom stack and configurations:
@@ -45,7 +45,7 @@ Steps:
    - Example: APPS/stereo_tool_gui_jack_64_1030 (if licensing allows). If not, the driver will offer to fetch or let the user provide it.
 3) Build the installer:
    - installer/offline/build-makeself.sh
-4) Transfer the resulting file (dist/rivendell-cloud-installer-<series>-<version>.run) to the target host and execute it as a sudo-capable user.
+4) Transfer the resulting file (dist/rivendell-installer-<version>-<date>.run) to the target host and execute it as a sudo-capable user.
 
 Notes on xRDP and desktops
 --------------------------
@@ -59,7 +59,7 @@ Online meta-package build
 This uses the debian/ directory at the repo root.
 
 - Build: `dpkg-buildpackage -b -us -uc` (or use debhelper/dh). This produces a .deb that you can host on GitHub Releases or any HTTPS server.
-- Install: `sudo dpkg -i rivendell-cloud-installer_*.deb && sudo apt -f install`
+- Install: `sudo dpkg -i rivendell-installer_*.deb && sudo apt -f install`
 - Hosting: you can publish the .deb directly, or create a signed apt repository (GitHub Pages/Cloudsmith/PackageCloud/Launchpad PPA). Ubuntu official repos are not required.
 
 Debconf questions (online .deb)

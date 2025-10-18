@@ -6,7 +6,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PAYLOAD_DIR="$SCRIPT_DIR/payload"
 PKG_DIR="$SCRIPT_DIR/packages"
-WORK_DIR="/tmp/rivendell-cloud-installer"
+WORK_DIR="/tmp/rivendell-installer"
 
 mkdir -p "$WORK_DIR"
 
@@ -74,14 +74,9 @@ enable_ufw=false; if ask_yesno "Enable UFW and open required ports?"; then enabl
 harden_ssh=false; if ask_yesno "Harden SSH (disable password auth)? Ensure SSH keys work first."; then harden_ssh=true; fi
 install_mate=false; if ask_yesno "Install MATE desktop (optional)?"; then install_mate=true; fi
 
-# Decide target user
+# Decide target user (for desktop seeding), but always provision rd for Rivendell
 target_user="${SUDO_USER:-${USER}}"
-if [[ "$target_user" == "root" ]]; then
-  create_rd=true
-  target_user=rd
-else
-  create_rd=false
-fi
+create_rd=true
 
 echo "Series: $series"
 echo "Type: $install_type"
@@ -120,15 +115,17 @@ set_timezone() {
 }
 
 ensure_user() {
-  if $create_rd; then
-    if ! id -u "$target_user" >/dev/null 2>&1; then
-      log "Creating user $target_user"
-      useradd -m -s /bin/bash "$target_user"
-      passwd -l "$target_user" || true
-    fi
+  # Ensure rd exists and is in key groups
+  if ! id -u rd >/dev/null 2>&1; then
+    log "Creating user rd"
+    useradd -m -s /bin/bash rd
+    passwd -l rd || true
   fi
-  log "Adding $target_user to groups"
-  usermod -aG sudo,audio,pulse,pulse-access,adm,cdrom,video "$target_user" || true
+  usermod -aG sudo,audio,pulse,pulse-access,adm,cdrom,video rd || true
+  mkdir -p /home/rd /home/rd/imports /home/rd/logs
+  chown -R rd:rd /home/rd
+
+  # Also make sure target_user has a home and ownership (for Desktop seeding)
   mkdir -p "/home/$target_user"
   chown -R "$target_user:$target_user" "/home/$target_user"
 }
@@ -154,6 +151,12 @@ install_local_debs() {
   fi
 }
 
+# Additional workstation apps Rivendell users expect
+install_media_apps() {
+  log "Installing media apps (qjackctl, vlc, liquidsoap, jackd2)"
+  apt_install qjackctl vlc liquidsoap jackd2 pulseaudio-module-jack || true
+}
+
 install_xrdp_desktop() {
   log "Installing xrdp and optional desktop"
   apt_install xrdp
@@ -165,23 +168,70 @@ install_xrdp_desktop() {
 }
 
 deploy_apps_payload() {
-  local dst="/usr/share/rivendell-cloud"
-  log "Deploying APPS payload to $dst"
-  mkdir -p "$dst"
-  rsync -a "$PAYLOAD_DIR/" "$dst/"
-  # Shortcuts to user Desktop
-  local desk="/home/$target_user/Desktop"
-  mkdir -p "$desk"
-  if compgen -G "$dst/APPS/Shortcuts/*.desktop" >/dev/null; then
-    rsync -a "$dst/APPS/Shortcuts/" "$desk/"
-    chown -R "$target_user:$target_user" "$desk"
-    chmod +x "$desk"/*.desktop 2>/dev/null || true
+  local sysdst="/usr/share/rivendell-cloud"
+  local rddst="/home/rd/imports/APPS"
+  log "Deploying APPS payload to rd home: $rddst"
+  mkdir -p "$sysdst" "$rddst"
+  rsync -a "$PAYLOAD_DIR/" "$sysdst/"
+  rsync -a "$sysdst/APPS/" "$rddst/"
+  chown -R rd:rd "/home/rd/imports" "/home/rd/logs"
+  # Ensure required rd folders and logs exist
+  mkdir -p /home/rd/imports/RECONCILE /home/rd/Music /home/rd/logs
+  touch /home/rd/logs/soap.log /home/rd/logs/dropbox.log
+  chown -R rd:rd /home/rd/imports /home/rd/Music /home/rd/logs
+  
+  # Compatibility symlink for older paths
+  ln -sfn /home/rd/imports /rivendell-installer
+
+  # Ensure executability for scripts and shortcuts in APPS
+  if [[ -d "$rddst" ]]; then
+    find "$rddst" -type f \( -name "*.sh" -o -name "*.desktop" -o -name "stl.sh" -o -name "autologgen.sh" -o -name "reconcile-traffic.sh" -o -name "stereo_tool_gui_jack_64_1030" \) -exec chmod +x {} + 2>/dev/null || true
+    # Rewrite any legacy/system paths within scripts to rd home
+    while IFS= read -r -d '' f; do
+      sed -i 's|/usr/share/rivendell-cloud/APPS|/home/rd/imports/APPS|g' "$f"
+      sed -i 's|/rivendell-installer/APPS|/home/rd/imports/APPS|g' "$f"
+      sed -i 's|/home/.*/rivendell-installer/APPS|/home/rd/imports/APPS|g' "$f"
+      sed -i 's|/home/.*/imports/APPS|/home/rd/imports/APPS|g' "$f"
+      sed -i 's|/var/log/rivendell-cloud/soap.log|/home/rd/logs/soap.log|g' "$f"
+    done < <(find "$rddst" -type f \( -name "*.sh" -o -name "*.liq" -o -name "*.desktop" -o -name "*.conf" -o -name "*.xml" \) -print0)
   fi
+
+  # System applications menu uses rd-based Exec
+  if compgen -G "$rddst/Shortcuts/*.desktop" >/dev/null; then
+    mkdir -p /usr/share/applications
+    while IFS= read -r -d '' f; do
+      base=$(basename "$f")
+      install -m 644 "$f" "/usr/share/applications/$base"
+    done < <(find "$rddst/Shortcuts" -type f -name "*.desktop" -print0)
+  fi
+
+  # Helper to copy shortcuts to a user's Desktop
+  copy_shortcuts_to_user() {
+    local u="$1"; local home="/home/$u"; local desk="$home/Desktop"
+    [[ -d "$home" ]] || return 0
+    mkdir -p "$desk"
+    if compgen -G "$rddst/Shortcuts/*.desktop" >/dev/null; then
+      rsync -a "$rddst/Shortcuts/" "$desk/"
+      chown -R "$u:$u" "$desk"
+      chmod +x "$desk"/*.desktop 2>/dev/null || true
+    fi
+  }
+
+  # Seed shortcuts for target user and for rd if present
+  copy_shortcuts_to_user "$target_user"
+  copy_shortcuts_to_user rd
+
   # Configs to user's home as needed
   mkdir -p "/home/$target_user/.config"
-  if [[ -d "$dst/APPS/configs" ]]; then
-    rsync -a "$dst/APPS/configs/" "/home/$target_user/.config/"
+  if [[ -d "$rddst/configs" ]]; then
+    rsync -a "$rddst/configs/" "/home/$target_user/.config/"
     chown -R "$target_user:$target_user" "/home/$target_user/.config"
+  fi
+  # Also seed configs for rd
+  mkdir -p "/home/rd/.config"
+  if [[ -d "$rddst/configs" ]]; then
+    rsync -a "$rddst/configs/" "/home/rd/.config/"
+    chown -R rd:rd "/home/rd/.config"
   fi
 }
 
@@ -207,31 +257,69 @@ web_meta_file() {
 }
 
 qt5_xcb_fix() {
-  # For xRDP sessions running Rivendell as root tools invoking Qt
-  local rd_home="/home/$target_user"
-  if [[ -f "$rd_home/.Xauthority" ]]; then
-    ln -sf "$rd_home/.Xauthority" /root/.Xauthority || true
-    log "Linked $rd_home/.Xauthority to /root/.Xauthority"
-  else
-    log "Skipping Qt5/XCB link; no $rd_home/.Xauthority yet"
-  fi
+  # Prefer XCB for Qt apps in xRDP sessions
+  echo 'export QT_QPA_PLATFORM=xcb' > /etc/profile.d/qt-xcb.sh
+  chmod 644 /etc/profile.d/qt-xcb.sh
+  # Also set per-user for common users (target and rd if exists)
+  for u in "$target_user" rd; do
+    if id -u "$u" >/dev/null 2>&1; then
+      local xrc="/home/$u/.xsessionrc"
+      grep -q 'QT_QPA_PLATFORM=xcb' "$xrc" 2>/dev/null || echo 'export QT_QPA_PLATFORM=xcb' >> "$xrc"
+      chown "$u:$u" "$xrc" || true
+    fi
+  done
 }
 
-import_database() {
+install_and_init_db() {
+  # Only initialize local DB for Standalone or Server installs
+  case "$install_type" in
+    Standalone|Server) :;;
+    *) return 0;;
+  esac
+
   local sql="/usr/share/rivendell-cloud/APPS/RDDB_v430_Cloud.sql"
-  if [[ -f "$sql" ]]; then
-    log "Importing MariaDB schema from APPS"
-    # Extract credentials from rd.conf if present
-    local cnf="/etc/rd.conf"
-    local db="Rivendell"
-    local user="rduser"
-    local pass="letmein"
-    [[ -f "$cnf" ]] && db=$(awk -F= '/^Database=/ {print $2}' "$cnf" | tr -d ' \r') || true
-    [[ -f "$cnf" ]] && user=$(awk -F= '/^DbUser=/ {print $2}' "$cnf" | tr -d ' \r') || true
-    [[ -f "$cnf" ]] && pass=$(awk -F= '/^DbPassword=/ {print $2}' "$cnf" | tr -d ' \r') || true
-    apt_install mariadb-client || true
-    mysql -u"$user" -p"$pass" "$db" < "$sql" || log "MySQL import skipped/failed; ensure DB is reachable and creds are correct"
+  log "Ensuring MariaDB server and Rivendell database"
+  apt_install mariadb-server mariadb-client || true
+  systemctl enable --now mariadb || true
+
+  # Desired defaults
+  local db="Rivendell" user="rduser" pass="hackme" host="localhost"
+
+  # If /etc/rd.conf exists, respect it; otherwise create it
+  if [[ -f /etc/rd.conf ]]; then
+    db=$(awk -F= '/^Database=/ {print $2}' /etc/rd.conf | tr -d ' \r' || echo "$db")
+    user=$(awk -F= '/^DbUser=/ {print $2}' /etc/rd.conf | tr -d ' \r' || echo "$user")
+    pass=$(awk -F= '/^DbPassword=/ {print $2}' /etc/rd.conf | tr -d ' \r' || echo "$pass")
+  else
+    cat >/etc/rd.conf <<EOF
+[mySQL]
+Driver=QMYSQL
+DbUser=$user
+DbPassword=$pass
+Database=$db
+Hostname=$host
+EOF
   fi
+
+  # Create DB and user idempotently
+  mysql -e "CREATE DATABASE IF NOT EXISTS \`$db\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" || true
+  mysql -e "CREATE USER IF NOT EXISTS '$user'@'localhost' IDENTIFIED BY '$pass';" || true
+  mysql -e "GRANT ALL PRIVILEGES ON \`$db\`.* TO '$user'@'localhost'; FLUSH PRIVILEGES;" || true
+
+  # Import schema if present
+  if [[ -f "$sql" ]]; then
+    mysql -u"$user" -p"$pass" "$db" < "$sql" || log "Schema import skipped/failed; verify DB creds"
+  fi
+
+  # Ensure rivendell waits for DB
+  mkdir -p /etc/systemd/system/rivendell.service.d
+  cat >/etc/systemd/system/rivendell.service.d/override.conf <<'EOF'
+[Unit]
+After=network-online.target mariadb.service
+Wants=network-online.target mariadb.service
+EOF
+  systemctl daemon-reload
+  systemctl restart rivendell || true
 }
 
 firewall_and_ssh() {
@@ -269,12 +357,13 @@ set_timezone
 ensure_user
 configure_limits
 install_local_debs
+install_media_apps
 install_xrdp_desktop
 deploy_apps_payload
 configure_icecast
 web_meta_file
 qt5_xcb_fix
-import_database
+install_and_init_db
 firewall_and_ssh
 pin_rivendell
 post_notes

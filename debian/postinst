@@ -6,19 +6,19 @@ set -e
 case "$1" in
     configure)
         # Read selections
-        db_get rivendell-cloud-installer/install-type
+    db_get rivendell-installer/install-type
         INSTALL_TYPE="$RET"
-        db_get rivendell-cloud-installer/hostname
+    db_get rivendell-installer/hostname
         HOSTNAME_SET="$RET"
-        db_get rivendell-cloud-installer/set-timezone
+    db_get rivendell-installer/set-timezone
         SET_TZ="$RET"
-        db_get rivendell-cloud-installer/enable-ufw
+    db_get rivendell-installer/enable-ufw
         ENABLE_UFW="$RET"
-        db_get rivendell-cloud-installer/harden-ssh
+    db_get rivendell-installer/harden-ssh
         HARDEN_SSH="$RET"
-        db_get rivendell-cloud-installer/create-rd-user
+    db_get rivendell-installer/create-rd-user
         CREATE_RD="$RET"
-        db_get rivendell-cloud-installer/install-mate
+    db_get rivendell-installer/install-mate
         INSTALL_MATE="$RET"
 
         # Detect Ubuntu series
