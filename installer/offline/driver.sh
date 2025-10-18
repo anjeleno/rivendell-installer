@@ -394,16 +394,17 @@ finalize_rivendell_db() {
     return 0
   fi
 
-  # Parse /etc/rd.conf [mySQL] section robustly
+  log "Finalizing Rivendell database"
+  # Parse only within the [mySQL] section
   local db user pass host
-  db=$(awk -F= '/^Database=/ {print $2}' /etc/rd.conf | tr -d ' \r')
+  db=$(awk -F= '/^\[mySQL\]/{s=1;next}/^\[/{s=0} s&&/^Database=/{print $2}' /etc/rd.conf | tr -d ' \r')
   # Rivendell uses 'Loginname='; older templates may use 'DbUser='
-  user=$(awk -F= '/^Loginname=/ {print $2}' /etc/rd.conf | tr -d ' \r')
-  [[ -n "$user" ]] || user=$(awk -F= '/^DbUser=/ {print $2}' /etc/rd.conf | tr -d ' \r')
+  user=$(awk -F= '/^\[mySQL\]/{s=1;next}/^\[/{s=0} s&&/^Loginname=/{print $2}' /etc/rd.conf | tr -d ' \r')
+  [[ -n "$user" ]] || user=$(awk -F= '/^\[mySQL\]/{s=1;next}/^\[/{s=0} s&&/^DbUser=/{print $2}' /etc/rd.conf | tr -d ' \r')
   # Rivendell uses 'Password='; older templates may use 'DbPassword='
-  pass=$(awk -F= '/^Password=/ {print $2}' /etc/rd.conf | tr -d ' \r')
-  [[ -n "$pass" ]] || pass=$(awk -F= '/^DbPassword=/ {print $2}' /etc/rd.conf | tr -d ' \r')
-  host=$(awk -F= '/^Hostname=/ {print $2}' /etc/rd.conf | tr -d ' \r')
+  pass=$(awk -F= '/^\[mySQL\]/{s=1;next}/^\[/{s=0} s&&/^Password=/{print $2}' /etc/rd.conf | tr -d ' \r')
+  [[ -n "$pass" ]] || pass=$(awk -F= '/^\[mySQL\]/{s=1;next}/^\[/{s=0} s&&/^DbPassword=/{print $2}' /etc/rd.conf | tr -d ' \r')
+  host=$(awk -F= '/^\[mySQL\]/{s=1;next}/^\[/{s=0} s&&/^Hostname=/{print $2}' /etc/rd.conf | tr -d ' \r')
   [[ -z "$host" ]] && host=localhost
 
   if [[ -z "$db" || -z "$user" || -z "$pass" ]]; then
@@ -426,12 +427,19 @@ finalize_rivendell_db() {
       sleep 1; i=$((i+1)); [[ $i -ge 20 ]] && break
     done
 
-    # Create user and DB, grant privileges
-    log "Ensuring MySQL user '$user' and database '$db' exist"
-    mysql_root "CREATE USER IF NOT EXISTS '${user}'@'localhost' IDENTIFIED BY '${pass}'" || true
-    mysql_root "CREATE DATABASE IF NOT EXISTS \`${db}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci"
-    mysql_root "GRANT ALL PRIVILEGES ON \`${db}\`.* TO '${user}'@'localhost'"
-    mysql_root "FLUSH PRIVILEGES"
+  # Stop rivendell while altering DB
+  systemctl stop rivendell || true
+
+  # Create user and DB, grant privileges
+  log "Ensuring MySQL user '$user' and database '$db' exist"
+  mysql_root "CREATE USER IF NOT EXISTS '${user}'@'localhost' IDENTIFIED BY '${pass}'" || true
+  mysql_root "CREATE USER IF NOT EXISTS '${user}'@'127.0.0.1' IDENTIFIED BY '${pass}'" || true
+  mysql_root "ALTER USER '${user}'@'localhost' IDENTIFIED BY '${pass}'" || true
+  mysql_root "ALTER USER '${user}'@'127.0.0.1' IDENTIFIED BY '${pass}'" || true
+  mysql_root "CREATE DATABASE IF NOT EXISTS \`${db}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci"
+  mysql_root "GRANT ALL PRIVILEGES ON \`${db}\`.* TO '${user}'@'localhost'"
+  mysql_root "GRANT ALL PRIVILEGES ON \`${db}\`.* TO '${user}'@'127.0.0.1'"
+  mysql_root "FLUSH PRIVILEGES"
 
     # If we have a custom schema, replace the DB contents with it
     if [[ -f "$sql" ]]; then
@@ -441,6 +449,8 @@ finalize_rivendell_db() {
       mysql_root "CREATE DATABASE \`${db}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci"
       # Ensure privileges after recreation
       mysql_root "GRANT ALL PRIVILEGES ON \`${db}\`.* TO '${user}'@'localhost'"
+      mysql_root "GRANT ALL PRIVILEGES ON \`${db}\`.* TO '${user}'@'127.0.0.1'"
+      mysql_root "FLUSH PRIVILEGES"
       if mysql --protocol=socket -uroot "$db" < "$sql"; then
         date +%s > "$stamp_file"
       else
