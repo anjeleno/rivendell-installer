@@ -23,7 +23,6 @@ Thumbs.db
 !dist/
 dist/*
 !dist/*.run
-*.run
 *.deb
 *.ddeb
 *.tar.gz
