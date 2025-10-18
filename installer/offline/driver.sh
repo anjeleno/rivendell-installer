@@ -484,6 +484,47 @@ ensure_mariadb() {
   done
 }
 
+# Create a minimal /etc/rd.conf and MySQL user/db BEFORE Rivendell packages
+# so that any package-time rddbmgr calls succeed.
+preseed_rd_conf_and_mysql() {
+  # Only for Standalone/Server; Client will be guided later
+  case "$install_type" in
+    Standalone|Server) :;;
+    *) return 0;;
+  esac
+
+  local db="Rivendell" user="rduser" pass="hackme" host="localhost"
+
+  # If rd.conf missing, write a minimal [mySQL] section
+  if [[ ! -f /etc/rd.conf ]]; then
+    log "Pre-seeding /etc/rd.conf with default DB credentials"
+    cat >/etc/rd.conf <<EOF
+[mySQL]
+Driver=QMYSQL
+Hostname=${host}
+Loginname=${user}
+Password=${pass}
+Database=${db}
+EOF
+    chmod 644 /etc/rd.conf
+  fi
+
+  # Create MySQL user/db up-front to satisfy any early rddbmgr calls
+  log "Pre-creating MySQL user '${user}' and database '${db}'"
+  local mysql_root
+  mysql_root() { mysql --protocol=socket -uroot -NBe "$1"; }
+  # Wait for root socket access
+  local i=0; until mysql --protocol=socket -uroot -e 'SELECT 1' >/dev/null 2>&1; do sleep 1; i=$((i+1)); [[ $i -ge 20 ]] && break; done
+  mysql_root "CREATE USER IF NOT EXISTS '${user}'@'localhost' IDENTIFIED BY '${pass}'" || true
+  mysql_root "CREATE USER IF NOT EXISTS '${user}'@'127.0.0.1' IDENTIFIED BY '${pass}'" || true
+  mysql_root "ALTER USER '${user}'@'localhost' IDENTIFIED BY '${pass}'" || true
+  mysql_root "ALTER USER '${user}'@'127.0.0.1' IDENTIFIED BY '${pass}'" || true
+  mysql_root "CREATE DATABASE IF NOT EXISTS \`${db}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci"
+  mysql_root "GRANT ALL PRIVILEGES ON \`${db}\`.* TO '${user}'@'localhost'"
+  mysql_root "GRANT ALL PRIVILEGES ON \`${db}\`.* TO '${user}'@'127.0.0.1'"
+  mysql_root "FLUSH PRIVILEGES"
+}
+
 # After Rivendell installs and generates /etc/rd.conf, finalize DB tasks
 finalize_rivendell_db() {
   # Only initialize local DB for Standalone or Server installs
@@ -589,6 +630,24 @@ EOF
   systemctl restart rivendell || true
 }
 
+# Optional: generate a short test tone cart after DB import
+generate_test_tone() {
+  case "$install_type" in
+    Standalone|Server) :;;
+    *) return 0;;
+  esac
+  # Require sox and rdimport
+  if ! have_cmd sox || ! have_cmd rdimport; then return 0; fi
+  # Try importing into DEFAULT group
+  local wav="/tmp/rd-test-tone.wav"
+  log "Generating and importing test tone cart"
+  if sox -n -r 44100 -b 16 -c 2 "$wav" synth 3 sine 1000 >/dev/null 2>&1; then
+    # Best effort import; ignore failure
+    rdimport DEFAULT "$wav" >/dev/null 2>&1 || true
+    rm -f "$wav" || true
+  fi
+}
+
 firewall_and_ssh() {
   if $enable_ufw; then
     log "Configuring UFW"
@@ -650,6 +709,7 @@ set_timezone
 ensure_user
 configure_limits
 ensure_mariadb
+preseed_rd_conf_and_mysql
 install_local_debs
 install_media_apps
 install_xrdp_desktop
@@ -663,6 +723,7 @@ firewall_and_ssh
 if [[ "$install_type" == "Client" ]]; then configure_client_rd_conf; fi
 configure_audiostore
 finalize_rivendell_db
+generate_test_tone
 pin_rivendell
 post_notes
 
