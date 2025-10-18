@@ -321,6 +321,33 @@ qt5_xcb_fix() {
   fi
 }
 
+# After the first xRDP login, link rd's Xauthority to root automatically
+setup_xauth_autolink() {
+  local svc="/etc/systemd/system/rivendell-xauth-link.service"
+  local path="/etc/systemd/system/rivendell-xauth-link.path"
+  cat >"$svc" <<'EOF'
+[Unit]
+Description=Link rd .Xauthority to root for xRDP Qt apps
+
+[Service]
+Type=oneshot
+ExecStart=/bin/ln -sfn /home/rd/.Xauthority /root/.Xauthority
+ConditionPathExists=/home/rd/.Xauthority
+EOF
+  cat >"$path" <<'EOF'
+[Unit]
+Description=Watch for rd .Xauthority
+
+[Path]
+PathExists=/home/rd/.Xauthority
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  systemctl daemon-reload || true
+  systemctl enable --now rivendell-xauth-link.path || true
+}
+
 configure_rd_conf() {
   # Prepare /etc/rd.conf with DB credentials prior to Rivendell install
   local db="Rivendell" user="rduser" pass="hackme" host="localhost"
@@ -341,52 +368,43 @@ Hostname=$host
 EOF
 }
 
-install_and_init_db() {
+# Ensure MariaDB is installed and running before Rivendell packages
+ensure_mariadb() {
+  log "Installing and starting MariaDB server"
+  apt_install mariadb-server mariadb-client || true
+  systemctl enable --now mariadb || true
+  # Wait briefly for server availability
+  local i=0
+  until mysqladmin ping >/dev/null 2>&1; do
+    sleep 1; i=$((i+1)); [[ $i -ge 20 ]] && break
+  done
+}
+
+# After Rivendell installs and generates /etc/rd.conf, finalize DB tasks
+finalize_rivendell_db() {
   # Only initialize local DB for Standalone or Server installs
   case "$install_type" in
     Standalone|Server) :;;
     *) return 0;;
   esac
 
-  # Prefer system copy of SQL, fallback to payload
+  # Read the credentials Rivendell generated
+  if [[ ! -f /etc/rd.conf ]]; then
+    log "/etc/rd.conf not present; skipping DB finalization"
+    return 0
+  fi
+  local db user pass host
+  db=$(awk -F= '/^Database=/ {print $2}' /etc/rd.conf | tr -d ' \r')
+  user=$(awk -F= '/^DbUser=/ {print $2}' /etc/rd.conf | tr -d ' \r')
+  pass=$(awk -F= '/^DbPassword=/ {print $2}' /etc/rd.conf | tr -d ' \r')
+  host=$(awk -F= '/^Hostname=/ {print $2}' /etc/rd.conf | tr -d ' \r')
+  [[ -z "$host" ]] && host=localhost
+
+  # Optional schema import if our SQL exists and connection works
   local sql="/usr/share/rivendell-cloud/APPS/RDDB_v430_Cloud.sql"
   [[ -f "$sql" ]] || sql="$PAYLOAD_DIR/APPS/RDDB_v430_Cloud.sql"
-  log "Ensuring MariaDB server and Rivendell database"
-  apt_install mariadb-server mariadb-client || true
-  systemctl enable --now mariadb || true
-  # Wait for server to be ready
-  local i=0
-  until mysqladmin ping >/dev/null 2>&1; do
-    sleep 1; i=$((i+1)); [[ $i -ge 20 ]] && break
-  done
-
-  # Desired defaults
-  local db="Rivendell" user="rduser" pass="hackme" host="localhost"
-
-  # If /etc/rd.conf exists, respect it; otherwise create it
-  if [[ -f /etc/rd.conf ]]; then
-    db=$(awk -F= '/^Database=/ {print $2}' /etc/rd.conf | tr -d ' \r' || echo "$db")
-    user=$(awk -F= '/^DbUser=/ {print $2}' /etc/rd.conf | tr -d ' \r' || echo "$user")
-    pass=$(awk -F= '/^DbPassword=/ {print $2}' /etc/rd.conf | tr -d ' \r' || echo "$pass")
-  else
-    cat >/etc/rd.conf <<EOF
-[mySQL]
-Driver=QMYSQL
-DbUser=$user
-DbPassword=$pass
-Database=$db
-Hostname=$host
-EOF
-  fi
-
-  # Create DB and user idempotently
-  mysql -e "CREATE DATABASE IF NOT EXISTS \`$db\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" || true
-  mysql -e "CREATE USER IF NOT EXISTS '$user'@'localhost' IDENTIFIED BY '$pass';" || true
-  mysql -e "GRANT ALL PRIVILEGES ON \`$db\`.* TO '$user'@'localhost'; FLUSH PRIVILEGES;" || true
-
-  # Import schema if present
   if [[ -f "$sql" ]]; then
-    mysql -u"$user" -p"$pass" "$db" < "$sql" || log "Schema import skipped/failed; verify DB creds"
+    mysql -h"$host" -u"$user" -p"$pass" "$db" < "$sql" || log "Schema import skipped/failed; verify DB creds"
   fi
 
   # Ensure rivendell waits for DB
@@ -450,17 +468,18 @@ set_hostname
 set_timezone
 ensure_user
 configure_limits
-deploy_apps_payload
-configure_rd_conf
-install_and_init_db
+ensure_mariadb
 install_local_debs
 install_media_apps
 install_xrdp_desktop
+deploy_apps_payload
 configure_icecast
 web_meta_file
 qt5_xcb_fix
+setup_xauth_autolink
 suppress_mate_power_manager
 firewall_and_ssh
+finalize_rivendell_db
 pin_rivendell
 post_notes
 
