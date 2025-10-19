@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
 
 # Offline installer driver (TUI first, GUI optional if zenity found)
 
@@ -477,11 +478,19 @@ ensure_mariadb() {
   log "Installing and starting MariaDB server"
   apt_install mariadb-server mariadb-client || true
   systemctl enable --now mariadb || true
-  # Wait briefly for server availability
-  local i=0
+  # Wait for server availability with retries and a restart if needed
+  local i=0 max=60
   until mysqladmin ping >/dev/null 2>&1; do
-    sleep 1; i=$((i+1)); [[ $i -ge 20 ]] && break
+    sleep 1; i=$((i+1))
+    if [[ $i -eq 20 ]]; then
+      log "MariaDB not ready after 20s; attempting a restart"
+      systemctl restart mariadb || true
+    fi
+    [[ $i -ge $max ]] && break
   done
+  if ! mysql --protocol=socket -uroot -e 'SELECT 1' >/dev/null 2>&1; then
+    log "[WARN] MariaDB root socket not responding after ${max}s; continuing but DB steps may fail"
+  fi
 }
 
 # Helper to (re)grant MySQL privileges for multiple host forms
@@ -649,10 +658,21 @@ finalize_rivendell_db() {
       mysql_root "CREATE DATABASE \`${db}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci"
       # Ensure privileges after recreation across all relevant host variants
       mysql_grant_matrix "$db" "$user" "$pass"
-      if mysql --protocol=socket -uroot "$db" < "$sql"; then
+      # Import with logging for diagnostics
+      local dblog="/var/log/rivendell-cloud-db.log"
+      mkdir -p /var/log
+      if mysql --protocol=socket -uroot "$db" < "$sql" 2>"$dblog"; then
         date +%s > "$stamp_file"
       else
-        log "Custom schema import failed; leaving DB in current state"
+        log "Custom schema import failed; see $dblog for details"
+        # Best-effort retry once after re-grant
+        mysql_grant_matrix "$db" "$user" "$pass"
+        if mysql --protocol=socket -uroot "$db" < "$sql" 2>>"$dblog"; then
+          log "Custom schema import succeeded on retry"
+          date +%s > "$stamp_file"
+        else
+          log "Custom schema import still failing; DB may be default. Check $dblog"
+        fi
       fi
     fi
   fi
