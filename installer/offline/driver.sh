@@ -818,12 +818,12 @@ set_hostname
 set_timezone
 ensure_user
 configure_limits
+install_xrdp_desktop
 ensure_mariadb
 preseed_rd_conf_and_mysql
 install_local_debs
 initial_rivendell_db_create
 install_media_apps
-install_xrdp_desktop
 deploy_apps_payload
 configure_icecast
 web_meta_file

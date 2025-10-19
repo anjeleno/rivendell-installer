@@ -45,7 +45,7 @@ dist/rivendell-installer-0.1.1-YYYYMMDD.run
 Run as root (or with sudo). The installer detects your series (22.04/24.04) and installs from the bundled .debs.
 
 ```bash
-sudo ./dist/rivendell-installer-0.1.1-20251018.run
+sudo ./dist/rivendell-installer-0.1.1-20251019.run
 ```
 
 The installer will prompt for:
