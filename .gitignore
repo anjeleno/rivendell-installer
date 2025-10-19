@@ -19,15 +19,16 @@ Thumbs.db
 .env.*
 
 # Build artifacts
-# Keep dist/ in repo to distribute the offline installer, but ignore other large artifacts by default.
+# Keep dist/ in repo, but ignore large binary installers by default.
 !dist/
 dist/*
-!dist/*.run
+!dist/SHA256SUMS.txt
 *.deb
 *.ddeb
 *.tar.gz
 *.tar.xz
 *.zip
+*.run
 
 # Offline bundle caches (large, regenerated)
 installer/offline/packages/
