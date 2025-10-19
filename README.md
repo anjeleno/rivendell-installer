@@ -42,6 +42,13 @@ wget -O SHA256SUMS.txt \
 sha256sum -c SHA256SUMS.txt
 ```
 
+Private repo helper (no manual headers needed):
+
+```bash
+# Download via gh if installed; otherwise uses GH_TOKEN or token in ~/.git-credentials
+bash scripts/release-download.sh v0.1.1-20251019 rivendell-installer-0.1.1-20251019.run
+```
+
 Note: We no longer store .run files in the git repository or Git LFS; Releases host the binaries to avoid cloning/downloading large files you don’t need.
 
 ### 2) Run the installer
