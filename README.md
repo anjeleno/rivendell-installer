@@ -3,7 +3,10 @@ Automate Rivendell Installation with custom configuration on a VPS
 
 ## Quick start
 
-This repository provides an offline, single-file installer for Rivendell 4.3.0 that works on Ubuntu 22.04 (jammy) and 24.04 (noble). The installer bundles all required .deb packages and the APPS payload (configs, shortcuts, Icecast, and helper scripts).
+This repository provides an offline-first installer for Rivendell 4.3.0 that works on Ubuntu 22.04 (jammy) and 24.04 (noble). It ships as:
+
+- Base installer (.run): installs Rivendell 4.3.0 from local .debs and deploys the APPS payload (configs, shortcuts, Icecast, helper scripts). For a smaller footprint, the base installer relies on apt for non-Rivendell dependencies if the network is available.
+- Optional MATE bundles (.run per series): fully offline MATE desktop payloads for 22.04 and 24.04. Use these when you want an offline desktop/xRDP-capable environment.
 
 ### 1) Prerequisites
 - Ubuntu Desktop 22.04 or 24.04 (a desktop environment is required; Rivendell does not run headless)
@@ -40,7 +43,7 @@ You should see a ~20–35 MB file like:
 dist/rivendell-installer-0.1.1-YYYYMMDD.run
 ```
 
-### 3) Run the offline installer
+### 3) Run the installer
 
 Run as root (or with sudo). The installer detects your series (22.04/24.04) and installs from the bundled .debs.
 
@@ -68,6 +71,16 @@ It will then:
 - Import MariaDB schema from APPS using `/etc/rd.conf` credentials if present
 - Optionally set UFW rules and harden SSH
 - Pin Rivendell packages at 4.3.0
+
+If you need a fully offline desktop:
+
+```bash
+sudo ./dist/rivendell-mate-bundle-22.04-0.1.1-20251019.run   # on Ubuntu 22.04
+# or
+sudo ./dist/rivendell-mate-bundle-24.04-0.1.1-20251019.run   # on Ubuntu 24.04
+```
+
+These MATE bundles install the desktop from a local cache and set LightDM as the display manager. The base installer detects the presence of local MATE packages and prefers them automatically when you choose to install a desktop.
 
 Reboot is recommended after installation.
 
@@ -118,10 +131,19 @@ sudo bash scripts/build-rivendell-4.3.0.sh
 # Build for 22.04 on a 24.04 host (uses chroot)
 sudo bash scripts/build-rivendell-4.3.0-jammy.sh
 
-# Create the offline .run
+# Create the offline .run artifacts
 sudo apt install -y makeself
 bash installer/offline/build-makeself.sh
 ls -lh dist/
+
+### Package cache layout (for maintainers)
+
+Local package caches live under `installer/offline/packages/<series>/` where `<series>` is `22.04` or `24.04`:
+
+- `base/`: rivendell*.deb and, optionally, other base deps if you choose to pre-bundle them.
+- `mate/`: MATE desktop payload collected for offline installs.
+
+Each directory contains a generated manifest `.files.txt` which is a sorted list of the `.deb` files present. These are used for traceability and quick verification; the installer itself relies on the files, not the manifests.
 ```
 
 ## Notes

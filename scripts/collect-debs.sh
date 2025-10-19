@@ -25,6 +25,8 @@ esac
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
 OUT_DIR="$ROOT_DIR/installer/offline/packages/$codename_dir"
+OUT_BASE="$OUT_DIR/base"
+OUT_MATE="$OUT_DIR/mate"
 LIST_DIR="$ROOT_DIR/installer/offline/package-lists"
 LIST_FILE="$LIST_DIR/$series.txt"
 
@@ -33,7 +35,7 @@ if [[ ! -f "$LIST_FILE" ]]; then
   exit 1
 fi
 
-mkdir -p "$OUT_DIR"
+mkdir -p "$OUT_BASE"
 
 TMPROOT="/tmp/riv-apt-$series"
 rm -rf "$TMPROOT"
@@ -77,18 +79,21 @@ apt-get "${APT_OPTS[@]}" -y --download-only install $(grep -vE '^(#|\s*$)' "$LIS
   echo "[WARN] Initial download attempt failed; check if rivendell $rver is available for $series." >&2
 }
 
-echo "[INFO] Copying .debs to $OUT_DIR (skip existing)"
+echo "[INFO] Copying base .debs to $OUT_BASE (skip existing)"
+BASE_MANIFEST="$OUT_BASE/.files.txt"
+touch "$BASE_MANIFEST"
 shopt -s nullglob
 for deb in "$TMPROOT/var/cache/apt/archives"/*.deb; do
   base=$(basename "$deb")
-  if [[ ! -e "$OUT_DIR/$base" ]]; then
-    cp "$deb" "$OUT_DIR/"
+  if [[ ! -e "$OUT_BASE/$base" ]]; then
+    cp "$deb" "$OUT_BASE/"
+    echo "$base" >> "$BASE_MANIFEST"
   fi
 done
 shopt -u nullglob
 
-count=$(ls -1 "$OUT_DIR"/*.deb 2>/dev/null | wc -l || true)
-echo "[INFO] Collected $count debs for $series into $OUT_DIR"
+count=$(ls -1 "$OUT_BASE"/*.deb 2>/dev/null | wc -l || true)
+echo "[INFO] Collected $count base debs for $series into $OUT_BASE"
 
 echo "[HINT] If rivendell $rver was not downloaded, verify repository availability or build .debs and place them into $OUT_DIR manually."
 
@@ -99,18 +104,24 @@ if [[ "${3:-}" == "--include-mate" ]]; then
     noble) mate_list="$LIST_DIR/mate-noble.txt";;
   esac
   if [[ -f "$mate_list" ]]; then
+    mkdir -p "$OUT_MATE"
     echo "[INFO] Downloading MATE desktop bundle from $mate_list"
     apt-get "${APT_OPTS[@]}" -y --download-only install $(grep -vE '^(#|\s*$)' "$mate_list") || {
       echo "[WARN] MATE bundle download encountered issues; some packages may be missing." >&2
     }
-    echo "[INFO] Copying MATE .debs to $OUT_DIR (skip existing)"
+    echo "[INFO] Copying MATE .debs to $OUT_MATE (skip existing)"
+    MATE_MANIFEST="$OUT_MATE/.files.txt"
+    touch "$MATE_MANIFEST"
     shopt -s nullglob
     for deb in "$TMPROOT/var/cache/apt/archives"/*.deb; do
       base=$(basename "$deb")
-      if [[ ! -e "$OUT_DIR/$base" ]]; then
-        cp "$deb" "$OUT_DIR/"
+      if [[ ! -e "$OUT_MATE/$base" ]]; then
+        cp "$deb" "$OUT_MATE/"
+        echo "$base" >> "$MATE_MANIFEST"
       fi
     done
     shopt -u nullglob
+    mcount=$(ls -1 "$OUT_MATE"/*.deb 2>/dev/null | wc -l || true)
+    echo "[INFO] Collected $mcount MATE debs for $series into $OUT_MATE"
   fi
 fi

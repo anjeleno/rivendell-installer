@@ -204,15 +204,15 @@ EOF
 }
 
 install_local_debs() {
-  local d="$PKG_DIR/$series"
-  log "Installing Rivendell 4.3.0 from local packages: $d"
-  if compgen -G "$d/*.deb" >/dev/null; then
+  local d_base="$PKG_DIR/$series/base"
+  log "Installing Rivendell 4.3.0 from local packages: $d_base"
+  if compgen -G "$d_base/*.deb" >/dev/null; then
     apt_install gdebi-core || true
     # Install in a single dpkg invocation to satisfy inter-deps; then fix with apt -f
-    dpkg -i "$d"/*.deb || true
+    dpkg -i "$d_base"/*.deb || true
     apt-get -yq -f install
   else
-    fail "No .deb packages found in $d"
+    fail "No base .deb packages found in $d_base"
   fi
 }
 
@@ -227,14 +227,14 @@ install_xrdp_desktop() {
   apt_install xrdp dbus-x11
   if $install_mate; then
     # Prefer offline MATE bundle if .debs are present for this series
-    local d="$PKG_DIR/$series"; local mate_debs_count=0
-    mate_debs_count=$(ls -1 "$d"/*mate* 2>/dev/null | wc -l || true)
+    local d_mate="$PKG_DIR/$series/mate"; local mate_debs_count=0
+    mate_debs_count=$(ls -1 "$d_mate"/*.deb 2>/dev/null | wc -l || true)
     if (( mate_debs_count > 0 )); then
       log "Installing MATE from local packages (no-download)"
       # Use apt to resolve dependencies but only consume from local cache folder
-      apt-get -y -o Dir::Cache::Archives="$d" --no-download install ubuntu-mate-desktop lightdm dbus-x11 \
-        || apt-get -y -o Dir::Cache::Archives="$d" --no-download install mate-desktop-environment lightdm dbus-x11 \
-        || { log "Offline MATE install via apt failed; attempting dpkg fallback"; dpkg -i "$d"/*.deb || true; apt-get -yq -f install; }
+      apt-get -y -o Dir::Cache::Archives="$d_mate" --no-download install ubuntu-mate-desktop lightdm dbus-x11 \
+        || apt-get -y -o Dir::Cache::Archives="$d_mate" --no-download install mate-desktop-environment lightdm dbus-x11 \
+        || { log "Offline MATE install via apt failed; attempting dpkg fallback"; dpkg -i "$d_mate"/*.deb || true; apt-get -yq -f install; }
     else
       log "Installing MATE via apt (online)"
       apt_install ubuntu-mate-desktop || apt_install mate-desktop-environment
