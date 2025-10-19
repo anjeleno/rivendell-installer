@@ -219,7 +219,7 @@ install_local_debs() {
 # Additional workstation apps Rivendell users expect
 install_media_apps() {
   log "Installing media apps (qjackctl, vlc, liquidsoap, jackd2)"
-  apt_install qjackctl vlc liquidsoap jackd2 pulseaudio-module-jack || true
+  apt_install qjackctl vlc vlc-plugin-jack liquidsoap jackd2 pulseaudio-module-jack || true
 }
 
 install_xrdp_desktop() {
