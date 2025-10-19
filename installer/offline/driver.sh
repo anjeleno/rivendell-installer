@@ -16,15 +16,37 @@ mkdir -p "$WORK_DIR"
 have_cmd() { command -v "$1" >/dev/null 2>&1; }
 
 use_gui=false
+ZENITY_USER=""
 if have_cmd zenity && [[ -n "${DISPLAY:-}" ]]; then
   use_gui=true
+  # Prefer to display dialogs as the invoking desktop user, not root
+  if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
+    ZENITY_USER="$SUDO_USER"
+  else
+    # Fallback to the logged-in console user if available
+    u=$(logname 2>/dev/null || true)
+    if [[ -n "$u" && "$u" != "root" ]]; then
+      ZENITY_USER="$u"
+    fi
+  fi
 fi
+
+# Helper to run zenity as the desktop user so dialogs can display in GUI sessions
+run_zenity() {
+  # Usage: run_zenity <args...>
+  if [[ -n "$ZENITY_USER" ]]; then
+    sudo -u "$ZENITY_USER" -H env DISPLAY="$DISPLAY" XAUTHORITY="${XAUTHORITY:-/home/$ZENITY_USER/.Xauthority}" zenity "$@"
+  else
+    zenity "$@"
+  fi
+}
 
 ask_select() {
   local title="$1"; shift
   local choices=("$@")
   if $use_gui; then
-    zenity --list --title "$title" --column Options "${choices[@]}"
+    run_zenity --list --title "$title" --column Options "${choices[@]}" || \
+    whiptail --title "$title" --menu "Use arrows/Enter to choose" 15 60 4 "${choices[@]}" 3>&1 1>&2 2>&3
   else
     whiptail --title "$title" --menu "Use arrows/Enter to choose" 15 60 4 "${choices[@]}" 3>&1 1>&2 2>&3
   fi
@@ -33,7 +55,11 @@ ask_select() {
 ask_yesno() {
   local title="$1"
   if $use_gui; then
-    zenity --question --text "$title"
+    run_zenity --question --text "$title"
+    local rc=$?
+    # If GUI question failed to show (e.g., no X perms), fallback to TUI
+    if [[ $rc -eq 0 || $rc -eq 1 ]]; then return $rc; fi
+    whiptail --yesno "$title" 10 60
     return $?
   else
     whiptail --yesno "$title" 10 60
@@ -44,7 +70,8 @@ ask_yesno() {
 ask_input() {
   local prompt="$1"; local default_val="$2"
   if $use_gui; then
-    zenity --entry --title "Input" --text "$prompt" --entry-text "$default_val"
+    run_zenity --entry --title "Input" --text "$prompt" --entry-text "$default_val" || \
+    whiptail --inputbox "$prompt" 10 60 "$default_val" 3>&1 1>&2 2>&3
   else
     whiptail --inputbox "$prompt" 10 60 "$default_val" 3>&1 1>&2 2>&3
   fi
@@ -54,7 +81,8 @@ ask_input() {
 ask_password() {
   local prompt="$1"
   if $use_gui; then
-    zenity --entry --title "Password" --text "$prompt" --hide-text
+    run_zenity --entry --title "Password" --text "$prompt" --hide-text || \
+    whiptail --passwordbox "$prompt" 10 60 3>&1 1>&2 2>&3
   else
     whiptail --passwordbox "$prompt" 10 60 3>&1 1>&2 2>&3
   fi
@@ -118,7 +146,7 @@ ensure_packages() {
   log "Installing base dependencies..."
   apt-get update -yq || true
   apt_install software-properties-common apt-transport-https ca-certificates gnupg \
-    apt-utils tzdata whiptail curl jq git sudo
+    apt-utils tzdata whiptail zenity curl jq git sudo
 }
 
 set_hostname() {
