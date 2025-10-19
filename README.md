@@ -21,6 +21,27 @@ This repository provides an offline-first installer for Rivendell 4.3.0 that wor
 sha256sum -c SHA256SUMS.txt
 ```
 
+Or download directly via wget:
+
+```bash
+# Base installer
+wget -O rivendell-installer-0.1.1-20251019.run \
+	"https://github.com/anjeleno/rivendell-installer/releases/download/v0.1.1-20251019/rivendell-installer-0.1.1-20251019.run"
+
+# Ubuntu 22.04 MATE bundle
+wget -O rivendell-mate-bundle-22.04-0.1.1-20251019.run \
+	"https://github.com/anjeleno/rivendell-installer/releases/download/v0.1.1-20251019/rivendell-mate-bundle-22.04-0.1.1-20251019.run"
+
+# Ubuntu 24.04 MATE bundle
+wget -O rivendell-mate-bundle-24.04-0.1.1-20251019.run \
+	"https://github.com/anjeleno/rivendell-installer/releases/download/v0.1.1-20251019/rivendell-mate-bundle-24.04-0.1.1-20251019.run"
+
+# Optional: checksums
+wget -O SHA256SUMS.txt \
+	"https://github.com/anjeleno/rivendell-installer/releases/download/v0.1.1-20251019/SHA256SUMS.txt"
+sha256sum -c SHA256SUMS.txt
+```
+
 Note: We no longer store .run files in the git repository or Git LFS; Releases host the binaries to avoid cloning/downloading large files you don’t need.
 
 ### 2) Run the installer
