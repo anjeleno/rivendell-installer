@@ -538,34 +538,8 @@ mysql_grant_matrix() {
 # Create a minimal /etc/rd.conf and MySQL user/db BEFORE Rivendell packages
 # so that any package-time rddbmgr calls succeed.
 preseed_rd_conf_and_mysql() {
-  # Only for Standalone/Server; Client will be guided later
-  case "$install_type" in
-    Standalone|Server) :;;
-    *) return 0;;
-  esac
-
-  local db="Rivendell" user="rduser" pass="hackme" host="localhost"
-
-  # If rd.conf missing, write a minimal [mySQL] section
-  if [[ ! -f /etc/rd.conf ]]; then
-    log "Pre-seeding /etc/rd.conf with default DB credentials"
-    cat >/etc/rd.conf <<EOF
-[mySQL]
-Driver=QMYSQL
-Hostname=${host}
-Loginname=${user}
-Password=${pass}
-Database=${db}
-EOF
-    chmod 644 /etc/rd.conf
-  fi
-
-  # Create MySQL user/db up-front to satisfy any early rddbmgr calls
-  log "Pre-creating MySQL user '${user}' and database '${db}'"
-  # Wait for root socket access
-  local i=0; until mysql --protocol=socket -uroot -e 'SELECT 1' >/dev/null 2>&1; do sleep 1; i=$((i+1)); [[ $i -ge 20 ]] && break; done
-  dblog "Preseed: ensuring user=${user} db=${db} (host=${host})"
-  mysql_grant_matrix "$db" "$user" "$pass"
+  # Removed: do not create /etc/rd.conf early. Let Rivendell generate it fully.
+  :
 }
 
 # After packages are installed, try an initial DB create via rddbmgr
@@ -575,7 +549,12 @@ initial_rivendell_db_create() {
     *) return 0;;
   esac
   if ! have_cmd rddbmgr; then return 0; fi
-  if [[ ! -f /etc/rd.conf ]]; then return 0; fi
+  # Wait for Rivendell to generate /etc/rd.conf
+  local i=0; while [[ ! -f /etc/rd.conf && $i -lt 60 ]]; do sleep 1; i=$((i+1)); done
+  if [[ ! -f /etc/rd.conf ]]; then
+    dblog "rd.conf not present after Rivendell install; skipping initial rddbmgr"
+    return 0
+  fi
   log "Attempting initial Rivendell DB create via rddbmgr"
   dblog "rddbmgr --create (initial) starting"
   systemctl stop rivendell || true
@@ -612,9 +591,11 @@ finalize_rivendell_db() {
     *) return 0;;
   esac
 
-  # Read the credentials Rivendell generated
+  # Read the credentials Rivendell generated; wait briefly if needed
+  local i=0; while [[ ! -f /etc/rd.conf && $i -lt 60 ]]; do sleep 1; i=$((i+1)); done
   if [[ ! -f /etc/rd.conf ]]; then
     log "/etc/rd.conf not present; skipping DB finalization"
+    dblog "No /etc/rd.conf; finalize skipped"
     return 0
   fi
 
@@ -721,6 +702,16 @@ EOF
   dblog "--- Finalize DB end ---"
 }
 
+# Noble-only: fix pypad.py deprecated readfp usage
+fix_pypad_syntax_noble() {
+  if [[ "$series" != "24.04" ]]; then return 0; fi
+  local py="/usr/lib/python3/dist-packages/rivendellaudio/pypad.py"
+  if [[ -f "$py" ]] && grep -q "config.readfp(" "$py"; then
+    log "Fixing pypad.py config.readfp() -> config.read() for 24.04"
+    sed -i "s/config\.readfp(open('\/etc\/rd\.conf'))/config.read('\/etc\/rd.conf')/" "$py" || true
+  fi
+}
+
 # Optional: generate a short test tone cart after DB import
 generate_test_tone() {
   case "$install_type" in
@@ -816,6 +807,7 @@ if [[ "$install_type" == "Client" ]]; then configure_client_rd_conf; fi
 configure_audiostore
 finalize_rivendell_db
 generate_test_tone
+fix_pypad_syntax_noble
 pin_rivendell
 post_notes
 
