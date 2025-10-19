@@ -3,52 +3,33 @@ Automate Rivendell Installation with custom configuration on a VPS
 
 ## Quick start
 
-This repository provides an offline-first installer for Rivendell 4.3.0 that works on Ubuntu 22.04 (jammy) and 24.04 (noble). It ships as:
+This repository provides an offline-first installer for Rivendell 4.3.0 that works on Ubuntu 22.04 (jammy) and 24.04 (noble). It ships as separate artifacts (download only what you need) via GitHub Releases:
 
 - Base installer (.run): installs Rivendell 4.3.0 from local .debs and deploys the APPS payload (configs, shortcuts, Icecast, helper scripts). For a smaller footprint, the base installer relies on apt for non-Rivendell dependencies if the network is available.
 - Optional MATE bundles (.run per series): fully offline MATE desktop payloads for 22.04 and 24.04. Use these when you want an offline desktop/xRDP-capable environment.
 
-### 1) Prerequisites
-- Ubuntu Desktop 22.04 or 24.04 (a desktop environment is required; Rivendell does not run headless)
-- Sudo/root access
-- Git and Git LFS installed
-
-Install prerequisites on Ubuntu:
-
-```bash
-sudo apt update && sudo apt install -y git git-lfs
-git lfs install
-```
-
-### 2) Clone with Git LFS
-
-Clone the repo so the offline installer artifact is fetched correctly via LFS:
+### 1) Get the installer (download only what you need)
+- Go to the Releases page and pick your version/tag, e.g.:
+	- https://github.com/anjeleno/rivendell-installer/releases/tag/v0.1.1-20251019
+- Download one or more of these files:
+	- rivendell-installer-0.1.1-20251019.run (base installer)
+	- rivendell-mate-bundle-22.04-0.1.1-20251019.run (Ubuntu 22.04 MATE bundle)
+	- rivendell-mate-bundle-24.04-0.1.1-20251019.run (Ubuntu 24.04 MATE bundle)
+- Optionally download SHA256SUMS.txt from the same release and verify checksums:
 
 ```bash
-git clone https://github.com/anjeleno/rivendell-installer.git ; cd rivendell-installer
-git lfs pull  
-# usually automatic, this forces LFS files to download
+sha256sum -c SHA256SUMS.txt
 ```
 
-Verify the installer is present and not a small pointer file:
+Note: We no longer store .run files in the git repository or Git LFS; Releases host the binaries to avoid cloning/downloading large files you don’t need.
 
-```bash
-git lfs ls-files
-ls -lh dist/
-```
-
-You should see a ~20–35 MB file like:
-
-```
-dist/rivendell-installer-0.1.1-YYYYMMDD.run
-```
-
-### 3) Run the installer
+### 2) Run the installer
 
 Run as root (or with sudo). The installer detects your series (22.04/24.04) and installs from the bundled .debs.
 
 ```bash
-sudo ./dist/rivendell-installer-0.1.1-20251019.run
+chmod +x ./rivendell-installer-0.1.1-20251019.run
+sudo ./rivendell-installer-0.1.1-20251019.run
 ```
 
 The installer will prompt for:
@@ -75,9 +56,11 @@ It will then:
 If you need a fully offline desktop:
 
 ```bash
-sudo ./dist/rivendell-mate-bundle-22.04-0.1.1-20251019.run   # on Ubuntu 22.04
+chmod +x ./rivendell-mate-bundle-22.04-0.1.1-20251019.run
+sudo ./rivendell-mate-bundle-22.04-0.1.1-20251019.run   # on Ubuntu 22.04
 # or
-sudo ./dist/rivendell-mate-bundle-24.04-0.1.1-20251019.run   # on Ubuntu 24.04
+chmod +x ./rivendell-mate-bundle-24.04-0.1.1-20251019.run
+sudo ./rivendell-mate-bundle-24.04-0.1.1-20251019.run   # on Ubuntu 24.04
 ```
 
 These MATE bundles install the desktop from a local cache and set LightDM as the display manager. The base installer detects the presence of local MATE packages and prefers them automatically when you choose to install a desktop.
@@ -86,15 +69,11 @@ Reboot is recommended after installation.
 
 ## Troubleshooting
 
-### Git LFS pointer instead of the real .run
-If `dist/*.run` is very small or `git lfs ls-files` shows nothing:
+### Downloaded .run won’t execute
+Ensure the file is marked executable:
 
 ```bash
-sudo apt install -y git-lfs
-git lfs install
-git lfs fetch --all
-git lfs pull
-ls -lh dist/
+chmod +x ./<file>.run
 ```
 
 ### Installer asks for missing tools (whiptail/zenity)
@@ -121,8 +100,8 @@ sudo ln -sf /home/rd/.Xauthority /root/.Xauthority
 ### UFW/SSH hardening locked me out
 If you enabled SSH hardening, ensure your SSH keys are installed on the host. You can revert from console by restoring `/etc/ssh/sshd_config.bak*` and restarting SSH.
 
-### I don’t want to use Git LFS
-Download the `.run` from the repo’s Releases page (if provided) or request a direct download link. Alternatively, you can rebuild the installer locally:
+### I want to build the installers locally
+Clone this repo and run the build scripts. You’ll need makeself and network access to fetch packages (or pre-populate caches):
 
 ```bash
 # Build Rivendell 4.3.0 .debs for your series (24.04)
