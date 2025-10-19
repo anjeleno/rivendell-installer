@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
+# Prevent tzdata from prompting under remote shells
+export TZ="${TZ:-$(cat /etc/timezone 2>/dev/null || echo Etc/UTC)}"
 
 # Offline installer driver (TUI first, GUI optional if zenity found)
 
@@ -97,6 +99,17 @@ echo "Target user: $target_user (create rd: $create_rd)"
 log() { echo "[$(date +%H:%M:%S)] $*"; }
 fail() { echo "[ERROR] $*" >&2; exit 1; }
 
+# Central DB log for visibility of all DB steps
+DB_LOG="/var/log/rivendell-cloud-db.log"
+dblog() {
+  mkdir -p /var/log
+  # Mask any password-looking substrings in log lines
+  local msg="$*"
+  msg="${msg//DbPassword=[^ ]*/DbPassword=****}"
+  msg="${msg//Password=[^ ]*/Password=****}"
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $msg" >> "$DB_LOG"
+}
+
 apt_install() {
   DEBIAN_FRONTEND=noninteractive apt-get -yq install "$@"
 }
@@ -105,7 +118,7 @@ ensure_packages() {
   log "Installing base dependencies..."
   apt-get update -yq || true
   apt_install software-properties-common apt-transport-https ca-certificates gnupg \
-    whiptail curl jq git sudo
+    apt-utils tzdata whiptail curl jq git sudo
 }
 
 set_hostname() {
@@ -479,18 +492,22 @@ ensure_mariadb() {
   apt_install mariadb-server mariadb-client || true
   systemctl enable --now mariadb || true
   # Wait for server availability with retries and a restart if needed
-  local i=0 max=60
+  local i=0 max=120
+  dblog "Waiting for MariaDB to become ready (timeout=${max}s)"
   until mysqladmin ping >/dev/null 2>&1; do
     sleep 1; i=$((i+1))
     if [[ $i -eq 20 ]]; then
       log "MariaDB not ready after 20s; attempting a restart"
+      dblog "MariaDB not ready after 20s; restarting service"
       systemctl restart mariadb || true
     fi
     [[ $i -ge $max ]] && break
   done
   if ! mysql --protocol=socket -uroot -e 'SELECT 1' >/dev/null 2>&1; then
-    log "[WARN] MariaDB root socket not responding after ${max}s; continuing but DB steps may fail"
+    dblog "FATAL: MariaDB root socket not responding after ${max}s"
+    fail "MariaDB did not start correctly; aborting install to avoid a broken state. Check: systemctl status mariadb"
   fi
+  dblog "MariaDB is ready"
 }
 
 # Helper to (re)grant MySQL privileges for multiple host forms
@@ -547,6 +564,7 @@ EOF
   log "Pre-creating MySQL user '${user}' and database '${db}'"
   # Wait for root socket access
   local i=0; until mysql --protocol=socket -uroot -e 'SELECT 1' >/dev/null 2>&1; do sleep 1; i=$((i+1)); [[ $i -ge 20 ]] && break; done
+  dblog "Preseed: ensuring user=${user} db=${db} (host=${host})"
   mysql_grant_matrix "$db" "$user" "$pass"
 }
 
@@ -559,9 +577,11 @@ initial_rivendell_db_create() {
   if ! have_cmd rddbmgr; then return 0; fi
   if [[ ! -f /etc/rd.conf ]]; then return 0; fi
   log "Attempting initial Rivendell DB create via rddbmgr"
+  dblog "rddbmgr --create (initial) starting"
   systemctl stop rivendell || true
-  if rddbmgr --create >/dev/null 2>&1; then
+  if out=$(rddbmgr --create 2>&1); then
     log "rddbmgr --create succeeded"
+    dblog "rddbmgr --create succeeded"
     return 0
   fi
   # If failed, reinforce grants and retry once
@@ -573,10 +593,13 @@ initial_rivendell_db_create() {
   [[ -n "$pass" ]] || pass=$(awk -F= '/^\[mySQL\]/{s=1;next}/^\[/{s=0} s&&/^DbPassword=/{print $2}' /etc/rd.conf | tr -d ' \r')
   if [[ -n "$db" && -n "$user" && -n "$pass" ]]; then
     mysql_grant_matrix "$db" "$user" "$pass"
-    if rddbmgr --create >/dev/null 2>&1; then
+    dblog "rddbmgr --create retry after grant reinforcement"
+    if out2=$(rddbmgr --create 2>&1); then
       log "rddbmgr --create succeeded after grant reinforcement"
+      dblog "rddbmgr --create succeeded after grant reinforcement"
     else
       log "rddbmgr --create still failing; will continue with finalize and custom import"
+      dblog "rddbmgr --create failed: $out"
     fi
   fi
 }
@@ -596,6 +619,7 @@ finalize_rivendell_db() {
   fi
 
   log "Finalizing Rivendell database"
+  dblog "--- Finalize DB begin ---"
   # Parse only within the [mySQL] section
   local db user pass host
   db=$(awk -F= '/^\[mySQL\]/{s=1;next}/^\[/{s=0} s&&/^Database=/{print $2}' /etc/rd.conf | tr -d ' \r')
@@ -610,6 +634,7 @@ finalize_rivendell_db() {
 
   if [[ -z "$db" || -z "$user" || -z "$pass" ]]; then
     log "Unable to parse DB credentials from /etc/rd.conf; found db='$db' user='$user' pass_len=${#pass}. Skipping custom DB import."
+    dblog "Parse error: db='$db' user='$user' pass_len=${#pass}"
   else
     # Idempotence marker to avoid clobbering on re-runs unless schema changes
     local stamp_dir="/var/lib/rivendell-cloud"; local stamp_file="$stamp_dir/db.finalized"
@@ -633,19 +658,24 @@ finalize_rivendell_db() {
 
   # Create user and DB, grant privileges across common host forms
   log "Ensuring MySQL user '$user' and database '$db' exist"
+  dblog "Finalize: ensure grants for user='$user' db='$db' host='$host'"
   mysql_grant_matrix "$db" "$user" "$pass"
 
     # Optionally initialize default Rivendell schema first (for completeness)
     # Detect if DB is empty (no tables). If so, try rddbmgr --create non-interactively.
     local tbl_count
     tbl_count=$(mysql --protocol=socket -uroot -NBe "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='${db}'" 2>/dev/null || echo 0)
+    dblog "Table count before: ${tbl_count}"
     if [[ "${tbl_count}" == "0" ]]; then
       if have_cmd rddbmgr; then
         log "Database '${db}' is empty; attempting initial create via rddbmgr"
-        if rddbmgr --create >/dev/null 2>&1; then
+        dblog "rddbmgr --create (finalize) starting"
+        if out3=$(rddbmgr --create 2>&1); then
           log "rddbmgr create completed"
+          dblog "rddbmgr create completed"
         else
           log "rddbmgr create failed or not available; proceeding without it"
+          dblog "rddbmgr create failed: $out3"
         fi
       fi
     fi
@@ -653,25 +683,27 @@ finalize_rivendell_db() {
     # If we have a custom schema, replace the DB contents with it
     if [[ -f "$sql" ]]; then
       log "Importing custom Rivendell schema from $(basename "$sql")"
+      dblog "Importing custom schema from $(basename "$sql")"
       # Drop and recreate to ensure a clean import
       mysql_root "DROP DATABASE IF EXISTS \`${db}\`"
       mysql_root "CREATE DATABASE \`${db}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci"
       # Ensure privileges after recreation across all relevant host variants
       mysql_grant_matrix "$db" "$user" "$pass"
       # Import with logging for diagnostics
-      local dblog="/var/log/rivendell-cloud-db.log"
-      mkdir -p /var/log
-      if mysql --protocol=socket -uroot "$db" < "$sql" 2>"$dblog"; then
+      if mysql --protocol=socket -uroot "$db" < "$sql" >> "$DB_LOG" 2>&1; then
+        dblog "Custom schema import: SUCCESS"
         date +%s > "$stamp_file"
       else
-        log "Custom schema import failed; see $dblog for details"
+        log "Custom schema import failed; see $DB_LOG for details"
         # Best-effort retry once after re-grant
         mysql_grant_matrix "$db" "$user" "$pass"
-        if mysql --protocol=socket -uroot "$db" < "$sql" 2>>"$dblog"; then
+        if mysql --protocol=socket -uroot "$db" < "$sql" >> "$DB_LOG" 2>&1; then
           log "Custom schema import succeeded on retry"
+          dblog "Custom schema import: SUCCESS on retry"
           date +%s > "$stamp_file"
         else
-          log "Custom schema import still failing; DB may be default. Check $dblog"
+          log "Custom schema import still failing; DB may be default. Check $DB_LOG"
+          dblog "Custom schema import: FAILED"
         fi
       fi
     fi
@@ -686,6 +718,7 @@ Wants=network-online.target mariadb.service
 EOF
   systemctl daemon-reload
   systemctl restart rivendell || true
+  dblog "--- Finalize DB end ---"
 }
 
 # Optional: generate a short test tone cart after DB import
