@@ -77,10 +77,13 @@ apt-get "${APT_OPTS[@]}" -y --download-only install $(grep -vE '^(#|\s*$)' "$LIS
   echo "[WARN] Initial download attempt failed; check if rivendell $rver is available for $series." >&2
 }
 
-echo "[INFO] Copying .debs to $OUT_DIR"
+echo "[INFO] Copying .debs to $OUT_DIR (skip existing)"
 shopt -s nullglob
 for deb in "$TMPROOT/var/cache/apt/archives"/*.deb; do
-  cp -n "$deb" "$OUT_DIR/"
+  base=$(basename "$deb")
+  if [[ ! -e "$OUT_DIR/$base" ]]; then
+    cp "$deb" "$OUT_DIR/"
+  fi
 done
 shopt -u nullglob
 
@@ -100,10 +103,13 @@ if [[ "${3:-}" == "--include-mate" ]]; then
     apt-get "${APT_OPTS[@]}" -y --download-only install $(grep -vE '^(#|\s*$)' "$mate_list") || {
       echo "[WARN] MATE bundle download encountered issues; some packages may be missing." >&2
     }
-    echo "[INFO] Copying MATE .debs to $OUT_DIR"
+    echo "[INFO] Copying MATE .debs to $OUT_DIR (skip existing)"
     shopt -s nullglob
     for deb in "$TMPROOT/var/cache/apt/archives"/*.deb; do
-      cp -n "$deb" "$OUT_DIR/"
+      base=$(basename "$deb")
+      if [[ ! -e "$OUT_DIR/$base" ]]; then
+        cp "$deb" "$OUT_DIR/"
+      fi
     done
     shopt -u nullglob
   fi
