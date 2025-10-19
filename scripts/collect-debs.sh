@@ -12,7 +12,7 @@ set -euo pipefail
 #   scripts/collect-debs.sh noble 4.3.0
 
 if [[ $# -lt 2 ]]; then
-  echo "Usage: $0 <jammy|noble> <rivendell_version>" >&2
+  echo "Usage: $0 <jammy|noble> <rivendell_version> [--include-mate]" >&2
   exit 1
 fi
 
@@ -88,3 +88,23 @@ count=$(ls -1 "$OUT_DIR"/*.deb 2>/dev/null | wc -l || true)
 echo "[INFO] Collected $count debs for $series into $OUT_DIR"
 
 echo "[HINT] If rivendell $rver was not downloaded, verify repository availability or build .debs and place them into $OUT_DIR manually."
+
+# Optionally collect MATE offline bundle
+if [[ "${3:-}" == "--include-mate" ]]; then
+  case "$series" in
+    jammy) mate_list="$LIST_DIR/mate-jammy.txt";;
+    noble) mate_list="$LIST_DIR/mate-noble.txt";;
+  esac
+  if [[ -f "$mate_list" ]]; then
+    echo "[INFO] Downloading MATE desktop bundle from $mate_list"
+    apt-get "${APT_OPTS[@]}" -y --download-only install $(grep -vE '^(#|\s*$)' "$mate_list") || {
+      echo "[WARN] MATE bundle download encountered issues; some packages may be missing." >&2
+    }
+    echo "[INFO] Copying MATE .debs to $OUT_DIR"
+    shopt -s nullglob
+    for deb in "$TMPROOT/var/cache/apt/archives"/*.deb; do
+      cp -n "$deb" "$OUT_DIR/"
+    done
+    shopt -u nullglob
+  fi
+fi

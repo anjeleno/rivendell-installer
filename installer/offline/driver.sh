@@ -226,7 +226,23 @@ install_xrdp_desktop() {
   log "Installing xrdp and optional desktop"
   apt_install xrdp dbus-x11
   if $install_mate; then
-    apt_install ubuntu-mate-desktop || apt_install mate-desktop-environment
+    # Prefer offline MATE bundle if .debs are present for this series
+    local d="$PKG_DIR/$series"; local mate_debs_count=0
+    mate_debs_count=$(ls -1 "$d"/*mate* 2>/dev/null | wc -l || true)
+    if (( mate_debs_count > 0 )); then
+      log "Installing MATE from local packages (no-download)"
+      # Use apt to resolve dependencies but only consume from local cache folder
+      apt-get -y -o Dir::Cache::Archives="$d" --no-download install ubuntu-mate-desktop lightdm dbus-x11 \
+        || apt-get -y -o Dir::Cache::Archives="$d" --no-download install mate-desktop-environment lightdm dbus-x11 \
+        || { log "Offline MATE install via apt failed; attempting dpkg fallback"; dpkg -i "$d"/*.deb || true; apt-get -yq -f install; }
+    else
+      log "Installing MATE via apt (online)"
+      apt_install ubuntu-mate-desktop || apt_install mate-desktop-environment
+    fi
+    # Set LightDM as display manager to avoid Wayland/GDM issues for xRDP
+    apt_install lightdm debconf-utils || true
+    echo "lightdm shared/default-x-display-manager select lightdm" | debconf-set-selections || true
+    dpkg-reconfigure -f noninteractive lightdm || true
   fi
   systemctl enable xrdp || true
   systemctl restart xrdp || true
