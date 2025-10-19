@@ -12,9 +12,9 @@ This repository provides an offline-first installer for Rivendell 4.3.0 that wor
 - Go to the Releases page and pick your version/tag, e.g.:
 	- https://github.com/anjeleno/rivendell-installer/releases/tag/v0.1.1-20251019
 - Download one or more of these files:
-	- rivendell-installer-0.1.1-20251019.run (base installer)
-	- rivendell-mate-bundle-22.04-0.1.1-20251019.run (Ubuntu 22.04 MATE bundle)
-	- rivendell-mate-bundle-24.04-0.1.1-20251019.run (Ubuntu 24.04 MATE bundle)
+	- [rivendell-installer-0.1.1-20251019.run (base installer)](https://github.com/anjeleno/rivendell-installer/releases/download/v0.1.1-20251019/rivendell-installer-0.1.1-20251019.run)
+	- [rivendell-mate-bundle-22.04-0.1.1-20251019.run (Ubuntu 22.04 MATE bundle)](https://github.com/anjeleno/rivendell-installer/releases/download/v0.1.1-20251019/rivendell-mate-bundle-22.04-0.1.1-20251019.run)
+	- [rivendell-mate-bundle-24.04-0.1.1-20251019.run (Ubuntu 24.04 MATE bundle)](https://github.com/anjeleno/rivendell-installer/releases/download/v0.1.1-20251019/rivendell-mate-bundle-24.04-0.1.1-20251019.run)
 - Optionally download SHA256SUMS.txt from the same release and verify checksums:
 
 ```bash
