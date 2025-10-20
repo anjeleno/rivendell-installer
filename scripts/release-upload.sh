@@ -3,7 +3,13 @@ set -euo pipefail
 
 # Upload artifacts from dist/ to a GitHub Release for the given tag.
 # Usage:
-#   scripts/release-upload.sh v0.1.1-20251019
+#   scripts/release-upload.sh <tag> [--base-only | --mate-only | --assets=PAT1,PAT2] [--no-sums]
+#
+# Examples:
+#   scripts/release-upload.sh v0.1.2-20251019 --base-only
+#   scripts/release-upload.sh v0.1.2-20251019 --mate-only
+#   scripts/release-upload.sh v0.1.2-20251019 --assets=rivendell-installer-0.1.2-20251019.run
+#   scripts/release-upload.sh v0.1.2-20251019 --assets=rivendell-mate-bundle-24.04-*.run --no-sums
 #
 # Auth options:
 #   1) GitHub CLI (gh) installed and authenticated (gh auth login)
@@ -17,13 +23,58 @@ if [[ -z "${TAG}" ]]; then
   exit 1
 fi
 
+shift || true
+
+BASE_ONLY=false
+MATE_ONLY=false
+NO_SUMS=false
+ASSET_PATTERNS=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --base-only)
+      BASE_ONLY=true; shift ;;
+    --mate-only)
+      MATE_ONLY=true; shift ;;
+    --assets=*)
+      IFS=',' read -r -a ASSET_PATTERNS <<< "${1#*=}"; shift ;;
+    --no-sums)
+      NO_SUMS=true; shift ;;
+    *)
+      echo "Unknown option: $1" >&2; exit 2 ;;
+  esac
+done
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT/dist"
 
-# Prepare checksums
-sha256sum rivendell-*.run | tee SHA256SUMS.txt
-ASSETS=(rivendell-*.run SHA256SUMS.txt)
+# Select assets based on flags/patterns
+shopt -s nullglob
+RUN_FILES=()
+if $BASE_ONLY; then
+  ASSET_PATTERNS=("rivendell-installer-*.run")
+elif $MATE_ONLY; then
+  ASSET_PATTERNS=("rivendell-mate-bundle-*.run")
+fi
+if [[ ${#ASSET_PATTERNS[@]} -eq 0 ]]; then
+  ASSET_PATTERNS=("rivendell-*.run")
+fi
+for pat in "${ASSET_PATTERNS[@]}"; do
+  for f in $pat; do RUN_FILES+=("$f"); done
+done
+
+# Prepare checksums for selected files, unless disabled
+ASSETS=()
+if [[ ${#RUN_FILES[@]} -gt 0 ]]; then
+  if ! $NO_SUMS; then
+    sha256sum "${RUN_FILES[@]}" | tee SHA256SUMS.txt
+    ASSETS+=("SHA256SUMS.txt")
+  fi
+  ASSETS+=("${RUN_FILES[@]}")
+else
+  echo "Warning: No matching .run files found for patterns: ${ASSET_PATTERNS[*]}" >&2
+fi
 
 if command -v gh >/dev/null 2>&1; then
   echo "Using gh CLI to publish assets to $TAG..."
