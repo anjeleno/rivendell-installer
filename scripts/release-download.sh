@@ -6,24 +6,36 @@ set -euo pipefail
 # or a token discovered in ~/.git-credentials (repo scope required for private repos).
 #
 # Usage:
-#   scripts/release-download.sh <tag> <asset-name> [<asset-name> ...]
+#   scripts/release-download.sh [-R owner/repo] <tag> <asset-name> [<asset-name> ...]
 # Example:
-#   scripts/release-download.sh v0.1.1-20251019 \
+#   scripts/release-download.sh -R anjeleno/rivendell-installer v0.1.1-20251019 \
 #     rivendell-mate-bundle-24.04-0.1.1-20251019.run SHA256SUMS.txt
+
+OWNER_REPO_ARG=""
+if [[ "${1:-}" == "-R" ]]; then
+  OWNER_REPO_ARG=${2:-}
+  shift 2 || true
+fi
 
 TAG=${1:-}
 shift || true
 if [[ -z "${TAG}" || $# -lt 1 ]]; then
-  echo "Usage: $0 <tag> <asset-name> [<asset-name> ...]" >&2
+  echo "Usage: $0 [-R owner/repo] <tag> <asset-name> [<asset-name> ...]" >&2
   exit 1
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-ORIGIN_URL=$(git -C "$REPO_ROOT" remote get-url origin)
-OWNER_REPO=$(echo "$ORIGIN_URL" | sed -E 's#.*github.com[:/]+([^/]+/[^/.]+)(\.git)?$#\1#')
-if [[ -z "$OWNER_REPO" || "$OWNER_REPO" == "$ORIGIN_URL" ]]; then
-  echo "Error: Could not determine owner/repo from origin URL: $ORIGIN_URL" >&2
+OWNER_REPO=${OWNER_REPO_ARG:-${OWNER_REPO:-}}
+if [[ -z "$OWNER_REPO" ]]; then
+  # Try to infer from a local git repo if available
+  if git -C "$REPO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    ORIGIN_URL=$(git -C "$REPO_ROOT" remote get-url origin)
+    OWNER_REPO=$(echo "$ORIGIN_URL" | sed -E 's#.*github.com[:/]+([^/]+/[^/.]+)(\.git)?$#\1#')
+  fi
+fi
+if [[ -z "$OWNER_REPO" ]]; then
+  echo "Error: Missing owner/repo. Provide -R owner/repo or set OWNER_REPO env var." >&2
   exit 1
 fi
 
