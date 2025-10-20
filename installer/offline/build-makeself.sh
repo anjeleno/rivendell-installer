@@ -1,4 +1,25 @@
 #!/usr/bin/env bash
+#
+# Rivendell offline installer builder
+#
+# Full usage (examples):
+#   # Build ONLY the base installer (no MATE bundles)
+#   /root/rivendell-cloud/installer/offline/build-makeself.sh --base-only
+#
+#   # Build ONLY the MATE bundle for 24.04
+#   /root/rivendell-cloud/installer/offline/build-makeself.sh --mate-only --series=24.04
+#
+#   # Build BOTH base installer and MATE bundles for 22.04 and 24.04 (default)
+#   /root/rivendell-cloud/installer/offline/build-makeself.sh
+#
+#   # Override version/date in output filenames
+#   /root/rivendell-cloud/installer/offline/build-makeself.sh --base-only \
+#       --version=0.1.2 --date=20251019
+#
+# Output artifacts:
+#   dist/rivendell-installer-<version>-<date>.run
+#   dist/rivendell-mate-bundle-<series>-<version>-<date>.run
+#
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/../.. && pwd)"
