@@ -15,18 +15,63 @@ fi
 VERSION="0.1.1"
 DATE="$(date +%Y%m%d)"
 
-# Prepare a temporary staging area for the base installer; exclude MATE subfolders entirely
-STAGE_BASE="$(mktemp -d)"
-rsync -a --exclude 'packages/*/mate' "$OFFLINE_DIR/" "$STAGE_BASE/"
+# Defaults: build both base and mate bundles
+BUILD_BASE=1
+BUILD_MATE=1
+SERIES_LIST=("22.04" "24.04")
 
-# Build base installer (no MATE)
-BASE_OUT="$DIST_DIR/rivendell-installer-$VERSION-$DATE.run"
-makeself --gzip \
-  "$STAGE_BASE" \
-  "$BASE_OUT" \
-  "Rivendell Offline Installer" \
-  bash ./driver.sh
-echo "Created $BASE_OUT"
+usage() {
+  cat <<EOF
+Usage: $(basename "$0") [options]
+
+Options:
+  --base-only, -B         Build only the base installer (.run), skip MATE bundles
+  --mate-only, -M         Build only the MATE bundle(s), skip base installer
+  --series=LIST           Comma-separated series for MATE bundles (default: 22.04,24.04)
+  --version=V             Override version string (default: $VERSION)
+  --date=YYYYMMDD         Override date stamp (default: current date)
+  --help, -h              Show this help and exit
+
+Examples:
+  $(basename "$0") --base-only
+  $(basename "$0") --mate-only --series=24.04
+EOF
+}
+
+# Parse simple CLI flags
+for arg in "$@"; do
+  case "$arg" in
+    --base-only|-B)
+      BUILD_BASE=1; BUILD_MATE=0 ;;
+    --mate-only|-M)
+      BUILD_BASE=0; BUILD_MATE=1 ;;
+    --series=*)
+      IFS=',' read -r -a SERIES_LIST <<< "${arg#*=}" ;;
+    --version=*)
+      VERSION="${arg#*=}" ;;
+    --date=*)
+      DATE="${arg#*=}" ;;
+    --help|-h)
+      usage; exit 0 ;;
+    *)
+      echo "Unknown option: $arg" >&2; usage; exit 2 ;;
+  esac
+done
+
+if [[ "$BUILD_BASE" -eq 1 ]]; then
+  # Prepare a temporary staging area for the base installer; exclude MATE subfolders entirely
+  STAGE_BASE="$(mktemp -d)"
+  rsync -a --exclude 'packages/*/mate' "$OFFLINE_DIR/" "$STAGE_BASE/"
+
+  # Build base installer (no MATE)
+  BASE_OUT="$DIST_DIR/rivendell-installer-$VERSION-$DATE.run"
+  makeself --gzip \
+    "$STAGE_BASE" \
+    "$BASE_OUT" \
+    "Rivendell Offline Installer" \
+    bash ./driver.sh
+  echo "Created $BASE_OUT"
+fi
 
 # Build per-series MATE bundles if directories exist
 build_mate_bundle() {
@@ -60,7 +105,10 @@ EOS
   echo "Created $mate_out"
 }
 
-build_mate_bundle 22.04 || true
-build_mate_bundle 24.04 || true
+if [[ "$BUILD_MATE" -eq 1 ]]; then
+  for s in "${SERIES_LIST[@]}"; do
+    build_mate_bundle "$s" || true
+  done
+fi
 
 echo "All artifacts created in $DIST_DIR"
