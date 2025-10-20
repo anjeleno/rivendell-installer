@@ -33,6 +33,9 @@ dist/*
 # Offline bundle caches (large, regenerated)
 installer/offline/packages/
 
+# Ignore test tone payload (still included in .run via payload)
+installer/offline/payload/999999_001.wav
+
 # Temporary build workspace
 /tmp/
 *.cache/

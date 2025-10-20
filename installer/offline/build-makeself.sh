@@ -5,6 +5,7 @@
 # Full usage (examples):
 #   # Build ONLY the base installer (no MATE bundles)
 #   /root/rivendell-cloud/installer/offline/build-makeself.sh --base-only
+#   bash /root/rivendell-cloud/installer/offline/build-makeself.sh --base-only
 #
 #   # Build ONLY the MATE bundle for 24.04
 #   /root/rivendell-cloud/installer/offline/build-makeself.sh --mate-only --series=24.04
