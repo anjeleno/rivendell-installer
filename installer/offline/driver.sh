@@ -380,8 +380,11 @@ configure_icecast() {
 # Configure AudioStore for Standalone/Server (local /var/snd) and Client (NFS mount)
 configure_audiostore() {
   # Ensure mountpoint exists
-  install -d -m 775 /var/snd
-  chown rd:rd /var/snd 2>/dev/null || true
+  # Ensure rivendell group exists, add rd to it, and set proper ownership and setgid on /var/snd
+  getent group rivendell >/dev/null 2>&1 || groupadd rivendell || true
+  id -u rd >/dev/null 2>&1 && usermod -aG rivendell rd || true
+  install -d -m 2775 /var/snd
+  chown rd:rivendell /var/snd 2>/dev/null || true
 
   # Helper to update [AudioStore] in /etc/rd.conf
   update_rdconf_audiostore() {
@@ -453,6 +456,17 @@ EOF
       update_rdconf_audiostore "${nfs_srv}:/var/snd" "nfs" "defaults,_netdev"
       ;;
   esac
+
+  # Ensure a test cart exists in /var/snd if Rivendell didn't generate one
+  local tone_src
+  if [[ -f "$PAYLOAD_DIR/999999_001.wav" ]]; then
+    tone_src="$PAYLOAD_DIR/999999_001.wav"
+  elif [[ -f "/usr/share/rivendell-cloud/999999_001.wav" ]]; then
+    tone_src="/usr/share/rivendell-cloud/999999_001.wav"
+  fi
+  if [[ -n "${tone_src:-}" ]]; then
+    install -m 664 -o rd -g rivendell "$tone_src" "/var/snd/999999_001.wav" || true
+  fi
 }
 
 web_meta_file() {

@@ -64,6 +64,9 @@
 ### Changes:
 - **Housekeeping.
 - **Fixing the sql nightly backup injection in crontab
+	- Make cron installer write to rd's crontab explicitly (`crontab -u rd`), idempotent line append.
+	- Make backup script cron-safe: parse DB creds from /etc/rd.conf, correct mysqldump `-p` usage, ensure paths and logging, retention pruning.
+	- Ensure /var/snd ownership rd:rivendell with setgid and copy test tone 999999_001.wav if present.
 - **vlcc config wasn't getting moved. Added debugging and fixing.
 - **meta.txt isn't getting created. Added debugging and fixing.
 #
